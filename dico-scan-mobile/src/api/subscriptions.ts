@@ -2,14 +2,16 @@
 
 import { apiClient } from "./client";
 
+export type SubscriptionTier = "FREE" | "PREMIUM" | "PREMIUM_GOLD";
+
 export interface UpgradeResponse {
-    subscriptionTier: "FREE" | "PREMIUM";
+    subscriptionTier: SubscriptionTier;
     message: string;
     upgraded: boolean;
 }
 
 export interface TierStatusResponse {
-    subscriptionTier: "FREE" | "PREMIUM";
+    subscriptionTier: SubscriptionTier;
     profileCompleted: boolean;
     userId: string;
 }
@@ -21,7 +23,7 @@ export const getTierStatus = async (): Promise<TierStatusResponse> => {
 };
 
 /** POST /v1/subscriptions/upgrade — Dev: instant upgrade, Prod: payment gateway */
-export const upgradeToPremdium = async (): Promise<UpgradeResponse> => {
-    const { data } = await apiClient.post<UpgradeResponse>("/v1/subscriptions/upgrade");
+export const upgradeToTier = async (tier: SubscriptionTier = "PREMIUM"): Promise<UpgradeResponse> => {
+    const { data } = await apiClient.post<UpgradeResponse>(`/v1/subscriptions/upgrade?targetTier=${tier}`);
     return data;
 };

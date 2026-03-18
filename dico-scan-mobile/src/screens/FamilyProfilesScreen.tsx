@@ -44,7 +44,7 @@ export default function FamilyProfilesScreen({ navigation }: Props) {
     });
 
     useEffect(() => {
-        if (tier === "PREMIUM_GOLD") {
+        if (tier === "PREMIUM" || tier === "PREMIUM_GOLD") {
             fetchProfiles().catch(() => {});
         }
     }, [tier, fetchProfiles]);
@@ -57,19 +57,19 @@ export default function FamilyProfilesScreen({ navigation }: Props) {
         );
     }
 
-    if (tier !== "PREMIUM_GOLD") {
+    if (tier === "FREE") {
         return (
             <View style={styles.center}>
                 <Text style={styles.emoji}>👨‍👩‍👧‍👦</Text>
-                <Text style={styles.title}>Hồ sợ gia đình (Gói Gold)</Text>
+                <Text style={styles.title}>Hồ sơ gia đình (Gói Premium)</Text>
                 <Text style={styles.description}>
-                    Tính năng này chỉ dành cho tài khoản Premium Gold. Cho phép bạn phân tích sản phẩm dựa trên dị ứng, hồ sơ bệnh lý của từng thành viên trong gia đình.
+                    Tính năng này chỉ dành cho tài khoản Premium. Cho phép bạn phân tích sản phẩm dựa trên dị ứng, hồ sơ bệnh lý của từng thành viên trong gia đình.
                 </Text>
                 <TouchableOpacity 
                     style={styles.upgradeBtn}
                     onPress={() => navigation.navigate("Upgrade")}
                 >
-                    <Text style={styles.upgradeBtnText}>Nâng cấp Premium Gold</Text>
+                    <Text style={styles.upgradeBtnText}>Nâng cấp Premium</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => navigation.goBack()}>
                     <Text style={styles.cancelText}>Quay lại</Text>

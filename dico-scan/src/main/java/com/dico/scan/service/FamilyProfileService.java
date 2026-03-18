@@ -24,17 +24,17 @@ public class FamilyProfileService {
     private final FamilyProfileRepository familyProfileRepository;
     private final UserRepository userRepository;
 
-    private void verifyPremiumGold(UUID userId) {
+    private void verifyPremium(UUID userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
         
-        if (user.getSubscriptionTier() != SubscriptionTier.PREMIUM_GOLD) {
-            throw new RuntimeException("PREMIUM_REQUIRED: Chức năng Family Profile chỉ dành cho thành viên Premium Gold.");
+        if (user.getSubscriptionTier() == SubscriptionTier.FREE) {
+            throw new RuntimeException("PREMIUM_REQUIRED: Chức năng Family Profile chỉ dành cho thành viên Premium.");
         }
     }
 
     public List<FamilyProfileResponse> getProfiles(UUID userId) {
-        verifyPremiumGold(userId);
+        verifyPremium(userId);
         
         return familyProfileRepository.findByUserId(userId)
                 .stream()
@@ -44,7 +44,7 @@ public class FamilyProfileService {
 
     @Transactional
     public FamilyProfileResponse addProfile(UUID userId, CreateFamilyProfileRequest request) {
-        verifyPremiumGold(userId);
+        verifyPremium(userId);
 
         FamilyProfile profile = new FamilyProfile();
         profile.setUserId(userId);
@@ -60,7 +60,7 @@ public class FamilyProfileService {
 
     @Transactional
     public FamilyProfileResponse updateProfile(UUID userId, UUID profileId, CreateFamilyProfileRequest request) {
-        verifyPremiumGold(userId);
+        verifyPremium(userId);
 
         FamilyProfile profile = familyProfileRepository.findById(profileId)
                 .orElseThrow(() -> new RuntimeException("Profile not found or does not belong to you"));
@@ -80,7 +80,7 @@ public class FamilyProfileService {
 
     @Transactional
     public void deleteProfile(UUID userId, UUID profileId) {
-        verifyPremiumGold(userId);
+        verifyPremium(userId);
 
         FamilyProfile profile = familyProfileRepository.findById(profileId)
                 .orElseThrow(() -> new RuntimeException("Profile not found"));

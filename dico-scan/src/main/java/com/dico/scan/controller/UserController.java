@@ -69,9 +69,9 @@ public class UserController {
                 User user = userRepository.findById(userId)
                                 .orElseThrow(() -> new RuntimeException("User not found: " + userId));
 
-                if (user.getSubscriptionTier() != SubscriptionTier.PREMIUM) {
+                if (user.getSubscriptionTier() == SubscriptionTier.FREE) {
                         throw new PremiumRequiredException(
-                                        "Personalized allergy preferences require PREMIUM subscription");
+                                        "Personalized allergy preferences require PREMIUM or PREMIUM_GOLD subscription");
                 }
 
                 UserPreferencesResponse updated = userService.updatePreferences(userId, request);

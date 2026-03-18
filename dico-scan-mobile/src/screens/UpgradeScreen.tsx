@@ -8,7 +8,7 @@ import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { RootStackParamList } from "@/navigation/RootNavigator";
 import { COLORS } from "@/constants/colors";
 import { useAuthStore } from "@/store/authStore";
-import { upgradeToPremdium } from "@/api/subscriptions";
+import { upgradeToTier, SubscriptionTier } from "@/api/subscriptions";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Upgrade">;
@@ -16,7 +16,7 @@ type Props = NativeStackScreenProps<RootStackParamList, "Upgrade">;
 const PLANS = [
     {
         id: "premium_1m",
-        name: "Hàng tháng",
+        name: "Premium Tháng",
         price: "35.000đ",
         priceNum: "35.000",
         billing: "/ tháng",
@@ -25,13 +25,22 @@ const PLANS = [
     },
     {
         id: "premium_12m",
-        name: "Hàng năm",
+        name: "Premium Năm",
         price: "199.000đ",
         priceNum: "199.000",
-        billing: "/ 6 tháng",
+        billing: "/ năm",
         isGold: false,
-        badge: "TIẾT KIỆM 30%",
-        savingsNote: "Tiết kiệm so sánh: 385.000đ",
+        badge: "PHỔ BIẾN",
+    },
+    {
+        id: "gold_12m",
+        name: "Premium GOLD",
+        price: "499.000đ",
+        priceNum: "499.000",
+        billing: "/ năm",
+        isGold: true,
+        badge: "TỐI ƯU",
+        savingsNote: "Bao gồm Hồ sơ gia đình",
     },
 ];
 
@@ -48,12 +57,12 @@ export default function UpgradeScreen({ navigation }: Props) {
     const [selectedPlan, setSelectedPlan] = useState<string>("premium_12m");
 
     const mutation = useMutation({
-        mutationFn: upgradeToPremdium,
-        onSuccess: (res) => {
+        mutationFn: (tier: SubscriptionTier) => upgradeToTier(tier),
+        onSuccess: (res, tier) => {
             queryClient.invalidateQueries({ queryKey: ["userPreferences"] });
             queryClient.invalidateQueries({ queryKey: ["subscriptionStatus"] });
             if (res.upgraded) {
-                Alert.alert("🎉 Thành công!", "Gói Premium đã được kích hoạt!", [
+                Alert.alert("🎉 Thành công!", `Gói ${tier} đã được kích hoạt!`, [
                     { text: "Quay lại", onPress: () => navigation.goBack() }
                 ]);
             } else {
@@ -69,7 +78,9 @@ export default function UpgradeScreen({ navigation }: Props) {
             Alert.alert("Cần đăng nhập", "Vui lòng đăng nhập để nâng cấp.");
             return;
         }
-        mutation.mutate();
+        const plan = PLANS.find(p => p.id === selectedPlan);
+        const tier: SubscriptionTier = plan?.isGold ? "PREMIUM_GOLD" : "PREMIUM";
+        mutation.mutate(tier);
     };
 
     const selectedPlanData = PLANS.find(p => p.id === selectedPlan);

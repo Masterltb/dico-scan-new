@@ -13,7 +13,7 @@ Bộ tài liệu V2 ("Production-Grade") định nghĩa chính xác toàn bộ l
    - Hỗ trợ **đa danh mục**: FOOD, TOY, BEAUTY, FASHION, GENERAL.
    - Override rules: Blacklist additives, Allergy conflict, Missing data.
 3. **Lớp AI Explanation:**
-   - Gemini 1.5 Flash sinh tóm tắt < 50 từ.
+   - Gemini 2.5 Flash sinh tóm tắt < 50 từ.
    - Category-specific prompt templates.
    - AI **không** override thẻ màu của Scoring Engine.
 4. **Lớp Recommendation (Phase 2+):**
