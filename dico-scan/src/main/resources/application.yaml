@@ -17,7 +17,7 @@ spring:
   jpa:
     open-in-view: false             # CRITICAL: Prevent "open session in view" anti-pattern
     hibernate:
-      ddl-auto: validate            # Flyway manages schema, Hibernate only validates
+      ddl-auto: update           # Flyway manages schema, Hibernate only validates
     show-sql: false
     properties:
       hibernate:
@@ -67,7 +67,7 @@ app:
   ai:
     timeout-ms: 2000
     max-ingredients-length: 1500
-    gemini-key: ${GEMINI_API_KEY}
+    gemini-key: ${GEMINI_API_KEY:mock_key}
     gemini-url: ${GEMINI_MODEL_URL:https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent}
   product-cache:
     ttl-days: 90   # Products older than 90 days are considered stale
@@ -90,11 +90,15 @@ resilience4j:
         ignore-exceptions:
           - org.springframework.web.client.HttpClientErrorException
       geminiApi:
-        max-attempts: 1           # Gemini is slow — no retry, just circuit break
-        wait-duration: 0ms
+        max-attempts: 3           # Retry up to 3 times for 503 High Demand
+        wait-duration: 2000ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
         retry-exceptions:
           - java.net.SocketTimeoutException
           - java.io.IOException
+          - org.springframework.web.client.HttpServerErrorException.ServiceUnavailable
+          - org.springframework.web.client.HttpServerErrorException.GatewayTimeout
         ignore-exceptions:
           - com.dico.scan.exception.ExternalServiceException
   circuitbreaker:

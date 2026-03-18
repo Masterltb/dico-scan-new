@@ -1,205 +1,173 @@
-# 13 – Mobile Component Specification
+# 13 – Mobile Component Specification (Gen Z Wellness Edition)
 
-Tài liệu này định nghĩa từng component UI của DICO Scan Mobile: props, variants, và design tokens.
+Tài liệu này định nghĩa hệ thống Design System và Component UI của DICO Scan Mobile. Giao diện được thiết kế theo phong cách **Mềm mại, Thân thiện, Pastel (giống app Elfie)**, hướng đến tập người dùng Gen Z, mẹ bỉm sữa và người quan tâm sức khỏe. 
+
+*Triết lý thiết kế: AI-first (thông minh), Thấu cảm (thân thiện, không dùng tông màu lạnh lẽo/technical), Card-based (gọn gàng), và Quyết định nhanh (< 5s).*
 
 ---
 
-## 1. Design Tokens (`src/constants/colors.ts`)
+## 1. Design Tokens (Light-Mode First)
+
+Sử dụng thư viện NativeWind v4 kết hợp trực tiếp với Tailwind classes, hoặc custom variables.
+
+### 1.1 Colors (Pastel-Driven & Semantics)
+Bảng màu uỷ thác ánh sáng (Light-mode first), sử dụng nền siêu nhạt (Off-white/Soft gray) và các Card màu trắng (Pure White).
 
 ```typescript
-export const RATING_COLORS = {
-  GREEN:   { bg: "#22C55E", text: "#FFFFFF", label: "An toàn" },
-  YELLOW:  { bg: "#EAB308", text: "#FFFFFF", label: "Cẩn thận" },
-  RED:     { bg: "#EF4444", text: "#FFFFFF", label: "Nguy hiểm" },
-  UNKNOWN: { bg: "#6B7280", text: "#FFFFFF", label: "Chưa rõ" },
-} as const;
-
+// src/constants/theme.ts
 export const COLORS = {
-  primary:    "#6366F1",   // Indigo – brand primary
-  background: "#0F172A",   // Dark navy – dark mode base
-  surface:    "#1E293B",   // Card background
-  text:       "#F1F5F9",   // Primary text
-  textMuted:  "#94A3B8",   // Muted/secondary text
-  border:     "#334155",   // Divider/border
-  success:    "#22C55E",
-  warning:    "#EAB308",
-  danger:     "#EF4444",
+  // Brand & Background
+  background: "#F9FAFB", // Nền chính của app (Gray-50)
+  surface: "#FFFFFF",    // Nền của các Card (Trắng tinh)
+  primary: "#818CF8",    // Indigo-400 (Mềm hơn bản cũ)
+  primaryLight: "#EEF2FF", // Màu nền cho chip/button nhạt
+  
+  // Accents (Gen Z Wellness Pastel)
+  peach: "#FFDDBF",
+  lavender: "#E0E7FF",
+  mint: "#D1FAE5",
+
+  // Typography
+  textMain: "#1E293B",   // Slate-800 (Không dùng đen thui)
+  textMuted: "#64748B",  // Slate-500
+  border: "#E2E8F0",     // Slate-200
+  
+  // Semantic / Safety levels (Vẫn giữ độ tương phản cao nhưng không quá chói)
+  success:    { bg: "#22C55E", lightBg: "#DCFCE7", text: "#14532D", icon: "#16A34A" }, // An toàn (Green)
+  warning:    { bg: "#F59E0B", lightBg: "#FEF3C7", text: "#78350F", icon: "#D97706" }, // Cẩn thận (Yellow/Amber)
+  danger:     { bg: "#EF4444", lightBg: "#FEE2E2", text: "#7F1D1D", icon: "#DC2626" }, // Nguy hiểm (Red)
+  unknown:    { bg: "#94A3B8", lightBg: "#F1F5F9", text: "#334155", icon: "#64748B" }, // Chưa rõ
 };
 ```
 
+### 1.2 Border Radius, Spacing & Shadows (Soft UI)
+UI bo tròn, tránh các góc nhọn sắc bén.
+
+```typescript
+export const RADIUS = {
+  sm: 8,
+  md: 16,     // Mặc định cho Tags, Chips
+  lg: 24,     // Mặc định cho Card
+  xl: 32,
+  full: 9999, // Pill shape
+};
+
+export const SPACING = {
+  xs: 4, sm: 8, md: 16, lg: 24, xl: 32, xxl: 48,
+};
+
+export const SHADOWS = {
+  soft: "0px 4px 20px rgba(0, 0, 0, 0.04)", // Shadow rất nhẹ giúp nổi bật card trên nền nhạt
+  float: "0px 8px 30px rgba(0, 0, 0, 0.08)", // Dành cho BottomSheet, Modal 
+};
+```
+
+### 1.3 Motion & Typography
+* **Motion:** Ưu tiên Fade & Slide nhẹ. `duration: 300ms`, `easing: ease-out`. Không giật cục.
+* **Typography:** Ưu tiên font tròn trịa hoặc hiện đại (Inter, Poppins, hoặc Quicksand).
+
+| Token | Size | Weight | Line Height | Usage |
+|---|---|---|---|---|
+| `h1` | 24 | Bold | 32 | Tiêu đề chính màn hình |
+| `h2` | 20 | SemiBold | 28 | Tên sản phẩm, Tên Section |
+| `subtitle` | 16 | Medium | 24 | Tên thành phần, Nút bấm |
+| `body` | 16 | Regular | 24 | Nội dung AI đọc lướt |
+| `caption` | 14 | Regular | 20 | Text phụ, ngày giờ, disclaimer|
+| `tiny` | 12 | Medium | 16 | Label trên Badge |
+
 ---
 
-## 2. Component List
+## 2. Core Components (Redesigned)
+
+### `SectionCard` (NEW)
+Component bọc nội dung chuẩn. Layout Card-based giúp tách biệt các thông tin (Max 3-5 cards/màn hình).
+* **Visual:** Nền `COLORS.surface` (Trắng), góc bo `RADIUS.lg` (24px), viền `border` rất nhạt hoặc `SHADOWS.soft`.
+* **Props:** `title?` (string), `icon?` (ReactNode), `children`, `action?` (button nhỏ ở góc).
+
+### `PrimaryButton` & `SecondaryButton` (NEW)
+Chấm dứt việc xài button mặc định của text/opacity.
+* **PrimaryButton:** 
+  * Shape: Pill (`RADIUS.full`) hoặc `RADIUS.xl`. Chiều cao `56px` (touch-friendly).
+  * Color: Background `primary` (Indigo), Text trắng. Font `subtitle` (Bold). Haptic feedback khi chạm. Thêm state `isLoading` (hiện spinner, mờ text).
+* **SecondaryButton:** 
+  * Background `primaryLight`, Text `primary`. (Hoặc ghost button cho thao tác huỷ).
 
 ### `RatingBadge`
-
-Hiển thị nhãn màu kết quả (GREEN/YELLOW/RED/UNKNOWN).
-
-```typescript
-interface RatingBadgeProps {
-  rating: RatingColor;
-  size?: "small" | "large";  // default: "large"
-}
-```
-
-**Visual:**
-- `large`: Card full-width, icon + text lớn (màn hình ResultScreen)
-- `small`: Pill badge nhỏ (màn hình HistoryScreen)
-- Animation: FadeIn 300ms + scale từ 0.85 → 1.0
-
----
+Nâng cấp từ badge cũ thô cứng sang dạng Status Chip thanh lịch.
+* **Visual:** Dùng màu `lightBg` làm khung, text màu `text` của cấp độ màu, đi kèm Icon (VD: ✅ An toàn, ⚠️ Lưu ý, ⛔ Nguy hiểm).
+* **Shape:** Pill, padding ngang dọc hợp lý, font `tiny` hoặc `caption` in hoa.
 
 ### `ScoreBar`
-
-Thanh điểm gradient 0–100.
-
-```typescript
-interface ScoreBarProps {
-  score: number | null;  // null → hiển thị "N/A"
-  animated?: boolean;    // default: true
-}
-```
-
-**Visual:**
-- Gradient: RED(0) → YELLOW(40) → GREEN(70) → GREEN(100)
-- Animated fill khi mount (500ms ease-out)
-
----
-
-### `AiSummaryCard`
-
-Khung hiển thị tóm tắt AI.
-
-```typescript
-interface AiSummaryCardProps {
-  summary: string | null;
-  isLoading?: boolean;
-}
-```
-
-**States:**
-- `isLoading=true` → Skeleton pulse animation
-- `summary=null` → Text fallback: "Đang phân tích thành phần sản phẩm..."
-- `summary` có giá trị → Hiển thị text với icon ✨
-
----
+Thanh điểm giờ đây cong tròn 2 đầu, gradient mềm mỏng hơn. Sử dụng chung cho Score 0-100. Kích thước bar dày hơn (chiều cao 8-12px) để dễ nhìn.
 
 ### `OverrideWarningCard`
-
-Cảnh báo khi có `override_reasons`. **Không được phép ẩn component này**.
-
-```typescript
-interface OverrideWarningCardProps {
-  reasons: string[];  // Phải > 0 để render
-}
-```
-
-**Visual:**
-- Background: `#450A0A` (đỏ tối)
-- Border: `#EF4444`
-- Icon: ⚠️ với text lý do override
-- GUARDRAIL: `reasons.length === 0` → render `null`, không render component rỗng
+Thiết kế lại không dùng nền đỏ thẫm chói lọi. 
+* **Visual:** Nền `danger.lightBg` (Hồng pastel nhạt), viền `danger.bg`. Icon ⚠️ bọc trong hình tròn màu đỏ nho nhỏ. 
+* **Layout:** Tiêu đề "Cảnh báo an toàn!" chữ đỏ đậm + bullet points giải thích lý do ngắn gọn. Tuyệt đối không xài chữ đỏ rực trên nền trắng diện rộng gây đau mắt.
 
 ---
 
-### `ProductInfoHeader`
+## 3. Chuyên đề: AI Result UX Structure (CRITICAL)
 
-Header thông tin sản phẩm.
+Dữ liệu trả về của GenAI tuy rất thông minh nhưng **KHÔNG ĐƯỢC PHÉP** đổ ra nguyên một cục `<Text>` dài lằng nhằng. UX phải thiết kế sao cho lướt qua dưới 5 giây là hiểu.
 
-```typescript
-interface ProductInfoHeaderProps {
-  name: string | null;
-  brand: string | null;
-  imageUrl: string | null;
-  barcode: string;
-}
-```
+Màn hình `ResultScreen` phải chia thành các Modules:
 
-**Visual:**
-- `imageUrl` có giá trị → Hiển thị ảnh sản phẩm (circle, 80px)
-- `imageUrl = null` → Hiển thị icon barcode placeholder
-- `name = null` → "Tên không xác định"
+### Module 1: `AiConclusionBlock`
+* **Hiển thị đầu tiên:** Kết luận siêu ngắn từ AI (VD: *"Sản phẩm này an toàn cho bạn, nhưng hãy lưu ý thành phần cồn nếu da bạn đang bong tróc"*).
+* **Visual:** Khung chữ nhật bo góc 24px, nền Gradient dịu (Lavender to Mint), font Medium, thêm icon Sparkle ✨ góc trên để đánh dấu dấu ấn của AI.
 
----
+### Module 2: `RiskIngredientList` (NEW `IngredientTag`)
+* **Chức năng:** Trích xuất các hoạt chất đáng chú ý (AHA, Retinol, Peanut, Paraben...) thành dạng Tag/Chip.
+* **Component `IngredientTag`:** Hình Oval, viền nhạt. Chấm tròn trạng thái (Đỏ, Vàng, Xanh) ở đầu + Tên thành phần. Tap vào Tag để hiện Tooltip hoặc xổ xuống (Accordion) xem chi tiết tại sao chất này bị bắt lỗi. (Progressive Disclosure).
 
-### `AllergyTagSelector`
+### Module 3: `QuickActionChip` (NEW)
+* Thanh trượt ngang (Horizontal Scroll) ngay dưới AI Conclusion chứa các tính năng Action:
+   * 🌟 `Thêm vào Yêu thích`
+   * 🛒 `Tìm sản phẩm thay thế (Premium)`
+   * 💬 `Hỏi chi tiết AI (Sắp ra mắt)`
 
-Bộ chọn dị ứng.
-
-```typescript
-interface AllergyTagSelectorProps {
-  selected: string[];
-  onChange: (selected: string[]) => void;
-  maxSelection?: number;  // default: 5
-}
-```
-
-**Visual:**
-- Tags hiển thị dạng pill
-- Selected: bg=primary, text=white
-- Disabled (đủ max): opacity 50%, không tap được
-- Hiển thị counter: "3/5 đã chọn"
+### Module 4: `ProgressStepIndicator` (NEW)
+* Trạng thái Loading của màn hình này khác biệt. Thay vì Spin vòng tròn buồn chán, hãy hiện thanh tiến độ text:
+   1. Đang quét mã vạch... (✅)
+   2. Đối chiếu cơ sở dữ liệu... (✅)
+   3. Khớp hồ sơ dị ứng cá nhân... (⏳ Đang nhấp nháy pulse)
+   4. Phân tích bởi DICO AI... 
 
 ---
 
-### `ErrorBanner`
+## 4. Upgraded Camera Scanner UX
 
-```typescript
-interface ErrorBannerProps {
-  message: string;
-  onRetry?: () => void;
-}
-```
+Màn hình scan không chỉ là đục lỗ camera. Nó phải hướng dẫn người dùng giao tiếp tốt.
 
----
-
-### `LoadingSkeleton`
-
-```typescript
-interface LoadingSkeletonProps {
-  variant: "product" | "list-item" | "text";
-  lines?: number;  // cho variant="text"
-}
-```
+* **Scan Guide Overlay:** Tuỳ chỉnh mask tối xung quanh, vùng camera hình bo tròn 16px (GenZ vibe), viền bounding box nhấp nháy nhẹ.
+* **Torch Toggle:** Nút bật đèn Flash to rõ ở góc để quét ban đêm.
+* **Permission States:** Nếu từ chối camera, giao diện hiện cái Card vui vẻ: *"Hix, DICO cần Camera mới đọc được mã vạch chứ!"* kèm nút mở Cài đặt.
+* **Fallback Manual Input:** Phía dưới màn hình luôn có thanh `SecondaryButton` -> Chạm vào kéo `BottomSheet` lên để user tự GÕ tay mã số (Phòng trường hợp camera hỏng, tem mờ, thiếu ánh sáng).
+* **Success Feedback:** Quét trúng rung nhẹ Haptic (`Haptics.impactAsync`) và phát ra âm thanh ngắn bíp mượt.
 
 ---
 
-### `CameraScanner`
+## 5. Other Important Components
 
-```typescript
-interface CameraScannerProps {
-  onBarcodeScanned: (barcode: string) => void;
-  debounceMs?: number;  // default: 2000 (RULE_MOB_06)
-}
-```
+### `BottomSheet` (NEW)
+* Dùng cho mọi thao tác nhỏ (Nhập mã thủ công, Gợi ý, Thông tin chi tiết chất). 
+* Kéo vuốt trượt đóng dễ dàng, Header có thanh kéo nhỏ, bo góc màn hình trên `RADIUS.xl`.
 
-**Behavior:**
-- Sử dụng `expo-barcode-scanner`
-- Chỉ nhận EAN-8, EAN-13, UPC-A
-- Debounce 2000ms để tránh spam
+### `ScreenHeader` (NEW)
+* Navbar chuẩn chỉ thay thế header mặc định của React Navigation. Nền trắng/trong suốt. Tiêu đề căn giữa, nút Back bo tròn hình tròn (có nền xám mờ).
 
----
+### `ErrorBanner` & `EmptyState`
+* Không dùng text khô khan. Sử dụng Minh hoạ 2D (Illustration - Elfie style) hoặc Emoji bự (ví dụ: 🕵️‍♀️, 🪫). Kêu gọi hành động rõ ràng bằng `PrimaryButton` (VD: "Quét lại", "Tải lại trang").
 
-## 3. Navigation Structure
-
-```
-RootNavigator (Stack)
-├── TabNavigator (Bottom Tabs)
-│   ├── Tab 1: HomeScreen       (icon: barcode)
-│   ├── Tab 2: HistoryScreen    (icon: clock)
-│   └── Tab 3: PreferencesScreen (icon: settings)
-└── ResultScreen    (modal-style push, không có tab)
-└── ContributeScreen (modal-style push)
-```
+### `AllergyTagSelector` (Preferences)
+* Tách bạch layout: Tags hiển thị grid 3-4 cột. Color nhã nhặn. Khi active thì pill chuyển sang màu `primary`, chữ trắng, có icon check 
+nhẹ `✓`.
 
 ---
 
-## 4. Typography
+## 6. Lộ trình Triển khai Design System trong Code
 
-| Token | Font | Size | Weight | Usage |
-|---|---|---|---|---|
-| `h1` | Inter | 28 | Bold | Tên sản phẩm |
-| `h2` | Inter | 22 | SemiBold | Rating label |
-| `body` | Inter | 16 | Regular | AI Summary |
-| `caption` | Inter | 12 | Regular | Ngày quét, barcode |
-| `badge` | Inter | 14 | Bold | Score number |
+1. Lập tức cập nhật `src/constants/theme.ts` thay thế hoàn toàn cho file colors cũ.
+2. Tại Sprint 2 (Xây dựng UI), team Frontend cần chia ra Folder `src/components/ui/` (chứa Nút, Card, BottomSheet) và `src/components/domain/` (chứa AiConclusionBlock, RatingBadge...). 
+3. Liên tục test màu sắc trên thiết bị thật (kiểm tra độ chói của warning/danger). Tránh tình trạng quá pastel làm mất đi cảnh báo an toàn cốt lõi.

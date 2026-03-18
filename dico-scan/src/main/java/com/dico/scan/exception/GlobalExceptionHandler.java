@@ -37,6 +37,15 @@ public class GlobalExceptionHandler {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN)
                                 .body(new StandardError("PREMIUM_REQUIRED", ex.getMessage(), traceId));
         }
+        
+        @ExceptionHandler(NotEnoughTokensException.class)
+        public ResponseEntity<StandardError> handleNotEnoughTokens(NotEnoughTokensException ex,
+                        HttpServletRequest request) {
+                String traceId = generateTraceId(request);
+                log.info("[{}] Token balance empty: {}", traceId, ex.getMessage());
+                return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED)
+                                .body(new StandardError("NOT_ENOUGH_TOKENS", ex.getMessage(), traceId));
+        }
 
         @ExceptionHandler(ExternalServiceException.class)
         public ResponseEntity<StandardError> handleExternalService(ExternalServiceException ex,

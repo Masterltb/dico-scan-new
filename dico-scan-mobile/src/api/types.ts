@@ -28,6 +28,7 @@ export interface ScanHistoryItem {
     scannedAt: string;
     snapshotColor: RatingColor;
     name?: string | null; // populated by mobile from product cache if available
+    imageUrl?: string | null;
 }
 
 /** Generic Page<T> response from Spring Data */
@@ -43,7 +44,7 @@ export interface PageResponse<T> {
 export interface UserPreferencesResponse {
     allergies: string[];
     diet: string;
-    subscriptionTier: 'FREE' | 'PREMIUM';
+    subscriptionTier: 'FREE' | 'PREMIUM' | 'PREMIUM_GOLD';
     profileCompleted: boolean;
     safetyProfile?: SafetyProfileResponse;
 }
@@ -211,3 +212,44 @@ export const TRIMESTER_OPTIONS = [
     { label: "Tam cá nguyệt 3 (27-40 tuần)", value: "TRIMESTER_3" },
     { label: "Không rõ", value: "UNKNOWN" },
 ] as const;
+
+// ===== SUBSCRIPTION & TOKEN TYPES =====
+
+export interface UserSubscriptionStatusResponse {
+    tier: 'FREE' | 'PREMIUM' | 'PREMIUM_GOLD';
+    availableTokens: number;
+    premiumExpiryDate: string | null;
+}
+
+export interface TokenRewardResponse {
+    availableTokens: number;
+    message: string;
+}
+
+// ===== FAMILY PROFILE TYPES =====
+
+export interface CreateFamilyProfileRequest {
+    name: string;
+    relationship: string;
+    allergies: string[];
+    diet: string;
+}
+
+export interface FamilyProfileResponse {
+    id: string;
+    userId: string;
+    name: string;
+    relationship: string;
+    allergies: string[];
+    diet: string;
+}
+
+// ===== FAVORITE TYPES =====
+export interface FavoriteProductResponse {
+    id: string;
+    userId: string;
+    barcode: string;
+    label: 'SAFE' | 'AVOID';
+    note: string | null;
+    addedAt: string;
+}

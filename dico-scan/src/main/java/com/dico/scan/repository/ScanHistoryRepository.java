@@ -21,31 +21,27 @@ public interface ScanHistoryRepository extends JpaRepository<ScanHistory, UUID> 
          * Composite index (user_id, scanned_at DESC) makes this O(log n).
          */
         @Query("""
-                        SELECT new com.dico.scan.dto.response.ScanHistoryItemResponse(
-                            s.id, s.barcode, s.scannedAt, s.snapshotColor
-                        )
+                        SELECT s
                         FROM ScanHistory s
+                        LEFT JOIN FETCH s.product p
                         WHERE s.userId = :userId
                         ORDER BY s.scannedAt DESC
                         """)
-        Page<com.dico.scan.dto.response.ScanHistoryItemResponse> findHistoryByUserId(
+        Page<ScanHistory> findHistoryByUserId(
                         @Param("userId") UUID userId, Pageable pageable);
 
         /**
-         * Search scan history by barcode keyword (no JOIN needed — barcode is in
-         * scan_history).
-         * Guardrail Rule 1: DTO projection, no full entity load.
+         * Search scan history by barcode keyword 
          */
         @Query("""
-                        SELECT new com.dico.scan.dto.response.ScanHistoryItemResponse(
-                            s.id, s.barcode, s.scannedAt, s.snapshotColor
-                        )
+                        SELECT s
                         FROM ScanHistory s
+                        LEFT JOIN FETCH s.product p
                         WHERE s.userId = :userId
-                          AND LOWER(s.barcode) LIKE LOWER(CONCAT('%', :keyword, '%'))
+                          AND (LOWER(s.barcode) LIKE LOWER(CONCAT('%', :keyword, '%')) OR LOWER(p.name) LIKE LOWER(CONCAT('%', :keyword, '%')))
                         ORDER BY s.scannedAt DESC
                         """)
-        Page<com.dico.scan.dto.response.ScanHistoryItemResponse> searchHistoryByUserId(
+        Page<ScanHistory> searchHistoryByUserId(
                         @Param("userId") UUID userId,
                         @Param("keyword") String keyword,
                         Pageable pageable);

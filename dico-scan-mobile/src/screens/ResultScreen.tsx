@@ -22,15 +22,18 @@ import { useProduct } from "@/hooks/useProduct";
 import { StandardError } from "@/api/types";
 import { getFavoriteStatus, upsertFavorite, removeFavorite } from "@/api/stats";
 import { useAuthStore } from "@/store/authStore";
+import { useSubscriptionStore } from "@/store/subscriptionStore";
 import { AlternativesSection } from "@/components/AlternativesSection";
+import { ScoreRing } from "@/components/ScoreRing";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Result">;
 
 export default function ResultScreen({ route, navigation }: Props) {
-    const { barcode } = route.params;
-    const { data: product, isLoading, error, refetch } = useProduct(barcode);
+    const { barcode, useToken, profileId } = route.params;
+    const { data: product, isLoading, error, refetch } = useProduct(barcode, useToken, profileId);
     const [ingredientsExpanded, setIngredientsExpanded] = useState(false);
     const { isAuthenticated } = useAuthStore();
+    const { earnToken } = useSubscriptionStore();
     const queryClient = useQueryClient();
 
     // ── Favorite state ────────────────────────────────────────────
@@ -44,7 +47,18 @@ export default function ResultScreen({ route, navigation }: Props) {
     const upsertMutation = useMutation({
         mutationFn: ({ label }: { label: "SAFE" | "AVOID" }) => upsertFavorite(barcode, label),
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ["favoriteStatus", barcode] }),
+        onError: (err: any) => {
+             if (err.errorCode === 'PREMIUM_REQUIRED') {
+                 Alert.alert("Tính năng VIP", "Vui lòng nâng cấp gói Premium để sử dụng tính năng yêu thích.", [
+                     { text: "Để sau", style: "cancel" },
+                     { text: "Nâng cấp ngay", onPress: () => navigation.navigate("Upgrade") }
+                 ]);
+             } else {
+                 Alert.alert("Lỗi", "Không thể lưu yêu thích");
+             }
+        }
     });
+    
     const removeMutation = useMutation({
         mutationFn: () => removeFavorite(barcode),
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ["favoriteStatus", barcode] }),
@@ -88,6 +102,17 @@ export default function ResultScreen({ route, navigation }: Props) {
         }
     };
 
+    // ── Token Ads Handler ─────────────────────────────────────────
+    const handleWatchAdForToken = async () => {
+        try {
+            await earnToken();
+            Alert.alert("Thành công", "Bạn đã nhận được 1 Xu DICO! Đang phân tích lại sản phẩm...");
+            refetch(); // Refetch the product since we now have tokens
+        } catch (e: any) {
+             Alert.alert("Lỗi", e.message || "Không thể nhận xu lúc này.");
+        }
+    };
+
     // ── Loading/Error states ──────────────────────────────────────
     if (isLoading) {
         return (
@@ -102,11 +127,31 @@ export default function ResultScreen({ route, navigation }: Props) {
         const isStandardError = (e: unknown): e is StandardError =>
             typeof e === "object" && e !== null && "errorCode" in e;
         const isNotFound = isStandardError(error) && error.errorCode === "PRODUCT_NOT_FOUND";
+        const isNotEnoughTokens = isStandardError(error) && error.errorCode === "NOT_ENOUGH_TOKENS";
 
         if (isNotFound) {
             navigation.replace("Contribute", { barcode });
             return null;
         }
+        
+        if (isNotEnoughTokens) {
+            return (
+                 <View style={styles.center}>
+                     <Text style={[styles.permissionEmoji, { marginBottom: 16 }]}>🪙</Text>
+                     <Text style={styles.errorText}>Hết xu DICO</Text>
+                     <Text style={[styles.muted, { textAlign: 'center', marginBottom: 20 }]}>
+                         Bạn cần 1 Xu DICO để phân tích sâu bằng AI. Xem một video ngắn để nhận 1 Xu ngay lập tức!
+                     </Text>
+                     <TouchableOpacity style={styles.retryBtn} onPress={handleWatchAdForToken}>
+                         <Text style={styles.retryText}>Xem Quảng Cáo</Text>
+                     </TouchableOpacity>
+                     <TouchableOpacity style={{ marginTop: 12 }} onPress={() => navigation.setParams({ useToken: false })}>
+                         <Text style={styles.seeAllLink}>Quét với thông tin cơ bản →</Text>
+                     </TouchableOpacity>
+                 </View>
+            );
+        }
+
         return (
             <View style={styles.center}>
                 <Text style={styles.errorText}>⚠️ {isStandardError(error) ? error.message : "Đã xảy ra lỗi"}</Text>
@@ -123,10 +168,11 @@ export default function ResultScreen({ route, navigation }: Props) {
     if (!product) return null;
 
     const ratingStyle = RATING_COLORS[product.rating];
+    const ringColor = product.rating === "GREEN" ? COLORS.success : product.rating === "RED" ? COLORS.danger : COLORS.warning;
 
     return (
-        <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-            {/* Header row */}
+        <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+            {/* Top action row */}
             <View style={styles.topRow}>
                 <TouchableOpacity style={styles.closeBtn} onPress={() => navigation.goBack()}>
                     <Text style={styles.closeBtnText}>← Quay lại</Text>
@@ -137,9 +183,7 @@ export default function ResultScreen({ route, navigation }: Props) {
                         onPress={handleFavoritePress}
                     >
                         <Text style={styles.favBtnText}>
-                            {favStatus?.isFavorited
-                                ? (favStatus.label === "SAFE" ? "✅" : "🚫")
-                                : "⭐"}
+                            {favStatus?.isFavorited ? (favStatus.label === "SAFE" ? "✅" : "🚫") : "⭐"}
                         </Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={styles.shareBtn} onPress={handleShare}>
@@ -148,40 +192,46 @@ export default function ResultScreen({ route, navigation }: Props) {
                 </View>
             </View>
 
-            {/* Product Header */}
-            <View style={styles.header}>
-                {product.imageUrl ? (
-                    <Image source={{ uri: product.imageUrl }} style={styles.productImage} />
-                ) : (
-                    <View style={styles.imagePlaceholder}>
-                        <Text style={{ fontSize: 36 }}>
-                            {product.category === "BEAUTY" ? "💄" : product.category === "TOY" ? "🧸" : "📦"}
-                        </Text>
+            {/* Score Hero Section — theo Frame 14 */}
+            <View style={styles.scoreHero}>
+                {/* Product image trái */}
+                <View style={styles.scoreHeroLeft}>
+                    {product.imageUrl ? (
+                        <Image source={{ uri: product.imageUrl }} style={styles.productImage} />
+                    ) : (
+                        <View style={styles.imagePlaceholder}>
+                            <Text style={{ fontSize: 40 }}>
+                                {product.category === "BEAUTY" ? "💄" : product.category === "TOY" ? "🧸" : "📦"}
+                            </Text>
+                        </View>
+                    )}
+                    <Text style={styles.productName} numberOfLines={2}>{product.name ?? "Tên không xác định"}</Text>
+                    {product.brand && <Text style={styles.brand}>{product.brand}</Text>}
+                    <Text style={styles.barcode}>#{product.barcode}</Text>
+                </View>
+                {/* Score Ring phải */}
+                <View style={styles.scoreHeroRight}>
+                    <ScoreRing
+                        score={product.score ?? (product.rating === "GREEN" ? 85 : product.rating === "RED" ? 20 : 55)}
+                        size={130}
+                        strokeWidth={12}
+                        color={ringColor}
+                        label="điểm"
+                    />
+                    <View style={[styles.ratingBadge, { backgroundColor: ratingStyle.bg + "33" }]}>
+                        <Text style={[styles.ratingBadgeText, { color: ringColor }]}>{ratingStyle.label}</Text>
                     </View>
-                )}
-                <Text style={styles.productName}>{product.name ?? "Tên không xác định"}</Text>
-                {product.brand && <Text style={styles.brand}>{product.brand}</Text>}
-                <Text style={styles.barcode}>#{product.barcode}</Text>
-                {product.category && product.category !== "FOOD" && (
-                    <View style={styles.categoryChip}>
-                        <Text style={styles.categoryChipText}>{product.category}</Text>
-                    </View>
-                )}
+                </View>
             </View>
 
-            {/* Rating Badge */}
-            <View style={[styles.ratingCard, { backgroundColor: ratingStyle.bg }]}>
-                <Text style={styles.ratingLabel}>{ratingStyle.label}</Text>
-                <Text style={styles.ratingDescription}>{ratingStyle.description}</Text>
-                {product.score !== null && (
-                    <Text style={styles.score}>Điểm: {product.score}/100</Text>
-                )}
-                {product.confidenceScore < 0.7 && (
-                    <Text style={styles.lowConfidence}>
-                        ⚠️ Dữ liệu chưa đầy đủ (độ tin cậy {Math.round(product.confidenceScore * 100)}%)
+            {/* Confidence warning */}
+            {product.confidenceScore < 0.7 && (
+                <View style={styles.confidenceWarn}>
+                    <Text style={styles.confidenceWarnText}>
+                        ⚠️ Dữ liệu chưa đầy đủ — Độ tin cậy {Math.round(product.confidenceScore * 100)}%
                     </Text>
-                )}
-            </View>
+                </View>
+            )}
 
             {/* Category Warning */}
             {product.categoryWarning && (
@@ -248,57 +298,104 @@ export default function ResultScreen({ route, navigation }: Props) {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: COLORS.background },
-    content: { padding: 20, paddingBottom: 40 },
+    content: { paddingBottom: 60 },
     center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: COLORS.background, gap: 16, padding: 24 },
 
-    topRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
-    closeBtn: { padding: 4 },
-    closeBtnText: { color: COLORS.textMuted, fontSize: 15 },
-    shareBtn: { backgroundColor: COLORS.surface, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border },
-    shareBtnText: { color: COLORS.text, fontSize: 13, fontWeight: "600" },
+    // Header row — back arrow + share button
+    topRow: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        paddingHorizontal: 16,
+        paddingTop: 56,
+        paddingBottom: 12,
+    },
+    closeBtn: { flexDirection: "row", alignItems: "center", gap: 4, padding: 8, borderRadius: 20, backgroundColor: COLORS.surface },
+    closeBtnText: { color: COLORS.text, fontSize: 15 },
+    shareBtn: { backgroundColor: COLORS.surface, width: 38, height: 38, borderRadius: 19, justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: COLORS.border },
+    shareBtnText: { color: COLORS.text, fontSize: 16 },
+    headerTitle: { color: COLORS.text, fontSize: 16, fontWeight: "700", flex: 1, textAlign: "center", paddingHorizontal: 8 },
+    headerActions: { flexDirection: "row", gap: 8, alignItems: "center" },
+    favBtn: { backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 8 },
+    favBtnActive: { backgroundColor: COLORS.primaryLight, borderColor: COLORS.primary },
+    favBtnText: { fontSize: 18 },
+    seeAllLink: { color: COLORS.primary, fontSize: 13, fontWeight: "500" },
+    permissionEmoji: { fontSize: 40 },
 
-    header: { alignItems: "center", marginBottom: 20 },
-    productImage: { width: 100, height: 100, borderRadius: 12, marginBottom: 12 },
-    imagePlaceholder: { width: 100, height: 100, borderRadius: 12, backgroundColor: COLORS.surface, justifyContent: "center", alignItems: "center", marginBottom: 12 },
-    productName: { color: COLORS.text, fontSize: 20, fontWeight: "700", textAlign: "center", marginBottom: 4 },
-    brand: { color: COLORS.textMuted, fontSize: 13, marginBottom: 4 },
-    barcode: { color: COLORS.textMuted, fontSize: 12 },
-    categoryChip: { marginTop: 8, backgroundColor: COLORS.surface, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, borderWidth: 1, borderColor: COLORS.border },
-    categoryChipText: { color: COLORS.textMuted, fontSize: 12, fontWeight: "600", letterSpacing: 0.5 },
+    // Score Hero — Frame 5: product image trái, ScoreRing phải — Light Mode
+    scoreHero: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: COLORS.white,
+        borderRadius: 0,
+        paddingHorizontal: 20,
+        paddingVertical: 16,
+        marginBottom: 0,
+        borderBottomWidth: 1,
+        borderBottomColor: COLORS.border,
+    },
+    scoreHeroLeft: { flex: 1, alignItems: "flex-start", gap: 6, paddingRight: 16 },
+    scoreHeroRight: { alignItems: "center", gap: 8 },
+    productImage: { width: 56, height: 56, borderRadius: 28, marginBottom: 10 },
+    imagePlaceholder: { width: 56, height: 56, borderRadius: 28, backgroundColor: COLORS.surface, justifyContent: "center", alignItems: "center", marginBottom: 10 },
+    productName: { color: COLORS.text, fontSize: 18, fontWeight: "800", lineHeight: 24 },
+    brand: { color: COLORS.textMuted, fontSize: 13 },
+    barcode: { color: COLORS.textMuted, fontSize: 11, letterSpacing: 0.5 },
+    ratingBadge: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 4,
+        paddingHorizontal: 12,
+        paddingVertical: 5,
+        borderRadius: 20,
+    },
+    ratingBadgeText: { fontSize: 13, fontWeight: "700" },
 
-    ratingCard: { borderRadius: 16, padding: 20, alignItems: "center", marginBottom: 12 },
-    ratingLabel: { color: COLORS.white, fontSize: 26, fontWeight: "800", marginBottom: 4 },
-    ratingDescription: { color: COLORS.white, fontSize: 13, opacity: 0.9, marginBottom: 6 },
-    score: { color: COLORS.white, fontSize: 18, fontWeight: "600" },
-    lowConfidence: { color: COLORS.white, fontSize: 12, opacity: 0.85, marginTop: 6, textAlign: "center" },
+    // Confidence warning
+    confidenceWarn: { backgroundColor: COLORS.warningLight, borderRadius: 10, padding: 10, marginHorizontal: 16, marginBottom: 12, borderWidth: 1, borderColor: COLORS.warning },
+    confidenceWarnText: { color: COLORS.warningText, fontSize: 13 },
 
-    categoryWarningCard: { backgroundColor: COLORS.surface, borderRadius: 10, padding: 12, marginBottom: 12, borderLeftWidth: 3, borderLeftColor: COLORS.warning },
-    categoryWarningText: { color: COLORS.text, fontSize: 13, lineHeight: 20 },
+    // Category chip — small pill below product name
+    categoryChip: { backgroundColor: COLORS.primaryLight, paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20, alignSelf: "flex-start" },
+    categoryChipText: { color: COLORS.primary, fontSize: 11, fontWeight: "700", letterSpacing: 0.5 },
 
-    overrideCard: { backgroundColor: "#450A0A", borderWidth: 1, borderColor: COLORS.danger, borderRadius: 12, padding: 16, marginBottom: 12 },
-    overrideTitle: { color: COLORS.danger, fontSize: 15, fontWeight: "700", marginBottom: 8 },
-    overrideReason: { color: "#FCA5A5", fontSize: 14, marginBottom: 4 },
+    // Category warning
+    categoryWarningCard: { backgroundColor: COLORS.warningLight, borderRadius: 10, padding: 12, marginHorizontal: 16, marginBottom: 12, borderLeftWidth: 3, borderLeftColor: COLORS.warning },
+    categoryWarningText: { color: COLORS.warningText, fontSize: 13, lineHeight: 20 },
 
-    aiCard: { backgroundColor: COLORS.surface, borderRadius: 12, padding: 16, marginBottom: 12 },
-    aiTitle: { color: COLORS.primary, fontSize: 14, fontWeight: "600", marginBottom: 8 },
+    // Override/danger card
+    overrideCard: { backgroundColor: COLORS.dangerLight, borderWidth: 1, borderColor: COLORS.danger, borderRadius: 12, padding: 16, marginHorizontal: 16, marginBottom: 12 },
+    overrideTitle: { color: COLORS.dangerText, fontSize: 15, fontWeight: "700", marginBottom: 8 },
+    overrideReason: { color: COLORS.dangerText, fontSize: 14, marginBottom: 4 },
+
+    // Tags / chips horizontal row — Frame 5
+    tagsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, paddingHorizontal: 16, paddingVertical: 12 },
+    tagChip: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
+    tagChipText: { color: COLORS.text, fontSize: 12, fontWeight: "600" },
+
+    // Action buttons row — "Lưu yêu thích" + "So sánh" — Frame 5
+    actionRow: { flexDirection: "row", gap: 10, paddingHorizontal: 16, marginBottom: 20, marginTop: 4 },
+    actionBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 13, borderRadius: 12, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
+    actionBtnText: { color: COLORS.text, fontSize: 14, fontWeight: "600" },
+
+    // AI Summary card — Frame 5: subtle card
+    aiCard: { backgroundColor: COLORS.surface, borderRadius: 14, padding: 16, marginHorizontal: 16, marginBottom: 14, borderWidth: 1, borderColor: COLORS.border },
+    aiTitle: { color: COLORS.primary, fontSize: 13, fontWeight: "700", marginBottom: 8, letterSpacing: 0.3 },
     aiSummary: { color: COLORS.text, fontSize: 14, lineHeight: 22 },
 
-    ingredientsCard: { backgroundColor: COLORS.surface, borderRadius: 12, padding: 16, marginBottom: 12 },
-    ingredientsHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
-    ingredientsTitle: { color: COLORS.text, fontSize: 14, fontWeight: "600" },
-    expandIcon: { color: COLORS.textMuted, fontSize: 12 },
-    ingredientsText: { color: COLORS.textMuted, fontSize: 13, lineHeight: 20 },
+    // Ingredients section — Frame 5
+    ingredientsCard: { backgroundColor: COLORS.white, borderRadius: 0, paddingHorizontal: 16, paddingVertical: 14, marginBottom: 0, borderTopWidth: 1, borderTopColor: COLORS.border },
+    ingredientsHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
+    ingredientsTitle: { color: COLORS.text, fontSize: 16, fontWeight: "700" },
+    expandIcon: { color: COLORS.primary, fontSize: 13, fontWeight: "600" },
+    ingredientsText: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 20 },
     ingredientsPreview: { color: COLORS.textMuted, fontSize: 13, lineHeight: 18 },
 
+    // Meta
     confidence: { color: COLORS.textMuted, fontSize: 12, textAlign: "center" },
     errorText: { color: COLORS.danger, fontSize: 16, textAlign: "center" },
-    retryBtn: { backgroundColor: COLORS.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8 },
+    retryBtn: { backgroundColor: COLORS.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 },
     retryText: { color: COLORS.white, fontWeight: "600" },
     muted: { color: COLORS.textMuted, fontSize: 14 },
-
-    // Header action row
-    headerActions: { flexDirection: "row", gap: 8, alignItems: "center" },
-    favBtn: { backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 },
-    favBtnActive: { backgroundColor: "#1E1B4B", borderColor: COLORS.primary },
-    favBtnText: { fontSize: 18 },
 });
+

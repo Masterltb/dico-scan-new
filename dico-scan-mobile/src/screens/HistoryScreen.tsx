@@ -1,5 +1,6 @@
 // src/screens/HistoryScreen.tsx
-// Lịch sử quét — với SearchBar + Filter + lịch sử gần nhất
+// Lịch sử quét — Light Mode theo Frame Figma 3
+// Flat list + image 70px + safety badge (✅ An toàn / ⚠️ Cẩn thận)
 
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -8,6 +9,7 @@ import React, { useState, useCallback } from "react";
 import {
     ActivityIndicator,
     FlatList,
+    Image,
     StyleSheet,
     Text,
     TextInput,
@@ -15,24 +17,39 @@ import {
     View,
 } from "react-native";
 import { RootStackParamList } from "@/navigation/RootNavigator";
-import { COLORS, RATING_COLORS } from "@/constants/colors";
+import { COLORS } from "@/constants/colors";
 import { queryKeys } from "@/constants/queryKeys";
-import { getScanHistory } from "@/api/products";
+import { getScanHistory, searchHistory } from "@/api/products";
 import { RatingColor, ScanHistoryItem } from "@/api/types";
 
 type FilterType = "ALL" | RatingColor;
+
 const FILTERS: { label: string; value: FilterType; emoji: string }[] = [
     { label: "Tất cả", value: "ALL", emoji: "" },
-    { label: "An toàn", value: "GREEN", emoji: "🟢" },
-    { label: "Chú ý", value: "YELLOW", emoji: "🟡" },
-    { label: "Nguy hiểm", value: "RED", emoji: "🔴" },
+    { label: "An toàn", value: "GREEN", emoji: "✅" },
+    { label: "Cẩn thận", value: "YELLOW", emoji: "⚠️" },
+    { label: "Nguy hiểm", value: "RED", emoji: "🚫" },
 ];
 
-const RATING_LABEL: Record<RatingColor, string> = {
-    GREEN: "AN TOÀN",
-    YELLOW: "CHÚ Ý",
-    RED: "NGUY HIỂM",
-    UNKNOWN: "KHÔNG RÕ",
+const SAFETY_ICON: Record<string, string> = {
+    GREEN: "✅",
+    YELLOW: "⚠️",
+    RED: "🚫",
+    UNKNOWN: "❓",
+};
+
+const SAFETY_LABEL: Record<string, string> = {
+    GREEN: "An toàn",
+    YELLOW: "Cẩn thận",
+    RED: "Nguy hiểm",
+    UNKNOWN: "Chưa rõ",
+};
+
+const SAFETY_COLOR: Record<string, string> = {
+    GREEN: COLORS.success,
+    YELLOW: COLORS.warning,
+    RED: COLORS.danger,
+    UNKNOWN: COLORS.textMuted,
 };
 
 export default function HistoryScreen() {
@@ -41,11 +58,9 @@ export default function HistoryScreen() {
     const [searchText, setSearchText] = useState("");
     const [activeKeyword, setActiveKeyword] = useState<string | undefined>(undefined);
 
-    // Debounce search — trigger khi user ngừng gõ 400ms
     const handleSearchChange = useCallback((text: string) => {
         setSearchText(text);
-        // Clear filter về ALL khi search
-        if (text.trim()) setFilter("ALL");
+        if (!text.trim()) setActiveKeyword(undefined);
     }, []);
 
     const handleSearchSubmit = () => {
@@ -57,32 +72,37 @@ export default function HistoryScreen() {
         setActiveKeyword(undefined);
     };
 
+    // Load all history
     const { data, isLoading, error, refetch } = useQuery({
-        queryKey: [...queryKeys.history(0), activeKeyword],
-        queryFn: () => getScanHistory(0, 50, activeKeyword),
+        queryKey: queryKeys.history(0),
+        queryFn: () => getScanHistory(0, 200),
         staleTime: 1000 * 30,
     });
 
-    const filtered =
-        filter === "ALL"
-            ? data ?? []
-            : (data ?? []).filter((item) => item.snapshotColor === filter);
+    // Search by keyword
+    const { data: searchData, isLoading: searchLoading } = useQuery({
+        queryKey: ["historySearch", activeKeyword],
+        queryFn: () => searchHistory(activeKeyword!),
+        enabled: !!activeKeyword,
+        staleTime: 1000 * 30,
+    });
 
-    // ── Loading ───────────────────────────────────────────────────
-    if (isLoading) {
+    const loading = isLoading || searchLoading;
+    const rawList: ScanHistoryItem[] = activeKeyword ? (searchData ?? []) : (data ?? []);
+    const filtered = filter === "ALL" ? rawList : rawList.filter(i => i.snapshotColor === filter);
+
+    if (loading && !data) {
         return (
             <View style={styles.center}>
                 <ActivityIndicator color={COLORS.primary} size="large" />
-                <Text style={styles.muted}>Đang tải lịch sử...</Text>
             </View>
         );
     }
 
-    // ── Error ──────────────────────────────────────────────────────
-    if (error) {
+    if (error && !data) {
         return (
             <View style={styles.center}>
-                <Text style={styles.errorEmoji}>😕</Text>
+                <Text style={styles.errorEmoji}>⚠️</Text>
                 <Text style={styles.errorText}>Không thể tải lịch sử</Text>
                 <TouchableOpacity style={styles.retryBtn} onPress={() => refetch()}>
                     <Text style={styles.retryText}>Thử lại</Text>
@@ -93,19 +113,21 @@ export default function HistoryScreen() {
 
     return (
         <View style={styles.container}>
-            {/* Header */}
+            {/* Header — Frame 3: title + avatar */}
             <View style={styles.header}>
-                <Text style={styles.title}>🕐 Lịch sử quét</Text>
-                <Text style={styles.totalCount}>{data?.length ?? 0} sản phẩm</Text>
+                <Text style={styles.title}>Lịch sử</Text>
+                <View style={styles.headerAvatar}>
+                    <Text style={styles.headerAvatarText}>👤</Text>
+                </View>
             </View>
 
-            {/* SearchBar */}
+            {/* Search bar */}
             <View style={styles.searchContainer}>
                 <View style={styles.searchBar}>
                     <Text style={styles.searchIcon}>🔍</Text>
                     <TextInput
                         style={styles.searchInput}
-                        placeholder="Tìm theo barcode..."
+                        placeholder="Tìm kiếm sản phẩm"
                         placeholderTextColor={COLORS.textMuted}
                         value={searchText}
                         onChangeText={handleSearchChange}
@@ -121,26 +143,9 @@ export default function HistoryScreen() {
                         </TouchableOpacity>
                     )}
                 </View>
-                {searchText.trim() && searchText !== (activeKeyword ?? "") && (
-                    <TouchableOpacity style={styles.searchSubmitBtn} onPress={handleSearchSubmit}>
-                        <Text style={styles.searchSubmitText}>Tìm</Text>
-                    </TouchableOpacity>
-                )}
             </View>
 
-            {/* Active search indicator */}
-            {activeKeyword && (
-                <View style={styles.searchIndicator}>
-                    <Text style={styles.searchIndicatorText}>
-                        Kết quả cho: "{activeKeyword}" ({filtered.length} mục)
-                    </Text>
-                    <TouchableOpacity onPress={handleClearSearch}>
-                        <Text style={styles.clearSearchLink}>Xóa tìm kiếm</Text>
-                    </TouchableOpacity>
-                </View>
-            )}
-
-            {/* Filter Bar — chỉ hiện khi không đang search */}
+            {/* Filter pills */}
             {!activeKeyword && (
                 <View style={styles.filterBar}>
                     {FILTERS.map((f) => (
@@ -157,47 +162,54 @@ export default function HistoryScreen() {
                 </View>
             )}
 
-            {/* History List */}
-            <FlatList
-                data={filtered}
-                keyExtractor={(item) => item.scanId ?? item.barcode}
-                renderItem={({ item }: { item: ScanHistoryItem }) => (
-                    <TouchableOpacity
-                        style={styles.item}
-                        onPress={() => navigation.navigate("Result", { barcode: item.barcode })}
-                        activeOpacity={0.7}
-                    >
-                        <View
-                            style={[
-                                styles.colorBar,
-                                { backgroundColor: RATING_COLORS[item.snapshotColor]?.bg ?? COLORS.border },
-                            ]}
-                        />
-                        <View style={styles.itemContent}>
-                            <Text style={styles.itemBarcode}>{item.barcode}</Text>
-                            <Text style={styles.itemDate}>
-                                📅 {new Date(item.scannedAt).toLocaleDateString("vi-VN", {
-                                    day: "2-digit", month: "2-digit", year: "numeric",
-                                    hour: "2-digit", minute: "2-digit",
-                                })}
-                            </Text>
-                        </View>
+            {/* Section title */}
+            <Text style={styles.sectionTitle}>
+                {activeKeyword ? `Kết quả cho "${activeKeyword}"` : "Lịch sử gần đây"}
+            </Text>
 
-                        {/* Rating badge + Compare button */}
-                        <View style={styles.itemActions}>
-                            <View style={[styles.ratingBadge, { backgroundColor: RATING_COLORS[item.snapshotColor]?.bg ?? COLORS.border }]}>
-                                <Text style={styles.ratingText}>{RATING_LABEL[item.snapshotColor] ?? "—"}</Text>
+            {/* List */}
+            <FlatList
+                data={Array.isArray(filtered) ? filtered : []}
+                keyExtractor={(item, index) => item?.scanId ?? item?.barcode ?? index.toString()}
+                renderItem={({ item }: { item: ScanHistoryItem }) => {
+                    if (!item) return null;
+                    const safetyColor = SAFETY_COLOR[item.snapshotColor] ?? COLORS.textMuted;
+                    return (
+                        <TouchableOpacity
+                            style={styles.item}
+                            onPress={() => navigation.navigate("Result", { barcode: item.barcode })}
+                            activeOpacity={0.7}
+                        >
+                            {/* Product image */}
+                            <View style={styles.imageBox}>
+                                {item.imageUrl ? (
+                                    <Image source={{ uri: item.imageUrl }} style={styles.image} />
+                                ) : (
+                                    <View style={styles.imagePlaceholder}>
+                                        <Text style={{ fontSize: 28 }}>📦</Text>
+                                    </View>
+                                )}
                             </View>
-                            <TouchableOpacity
-                                style={styles.compareBtn}
-                                onPress={() => navigation.navigate("Compare", { barcode1: item.barcode })}
-                            >
-                                <Text style={styles.compareBtnText}>⚖️</Text>
-                            </TouchableOpacity>
-                        </View>
-                        <Text style={styles.itemArrow}>›</Text>
-                    </TouchableOpacity>
-                )}
+
+                            {/* Content */}
+                            <View style={styles.itemContent}>
+                                <Text style={styles.itemName} numberOfLines={1}>
+                                    {item.name ?? "Sản phẩm DICO"}
+                                </Text>
+                                <Text style={styles.itemCategory} numberOfLines={1}>
+                                    {item.barcode}
+                                </Text>
+                                {/* Safety badge — Frame 3 style */}
+                                <View style={styles.safetyRow}>
+                                    <Text style={styles.safetyIcon}>{SAFETY_ICON[item.snapshotColor] ?? "❓"}</Text>
+                                    <Text style={[styles.safetyText, { color: safetyColor }]}>
+                                        {SAFETY_LABEL[item.snapshotColor] ?? "Chưa rõ"}
+                                    </Text>
+                                </View>
+                            </View>
+                        </TouchableOpacity>
+                    );
+                }}
                 ItemSeparatorComponent={() => <View style={styles.separator} />}
                 ListEmptyComponent={
                     <View style={styles.emptyState}>
@@ -207,10 +219,8 @@ export default function HistoryScreen() {
                         </Text>
                         <Text style={styles.emptyDesc}>
                             {activeKeyword
-                                ? `Không có barcode chứa "${activeKeyword}"`
-                                : filter !== "ALL"
-                                    ? `Không có sản phẩm màu ${filter}`
-                                    : "Quét sản phẩm đầu tiên của bạn!"}
+                                ? `Không có sản phẩm phù hợp với "${activeKeyword}"`
+                                : "Quét sản phẩm đầu tiên của bạn!"}
                         </Text>
                     </View>
                 }
@@ -222,52 +232,93 @@ export default function HistoryScreen() {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: COLORS.background },
-    center: { flex: 1, justifyContent: "center", alignItems: "center", gap: 10, padding: 24 },
-    muted: { color: COLORS.textMuted, fontSize: 14 },
+    center: { flex: 1, justifyContent: "center", alignItems: "center", gap: 12, padding: 24 },
     errorEmoji: { fontSize: 40 },
     errorText: { color: COLORS.danger, fontSize: 16, fontWeight: "600" },
-    retryBtn: { backgroundColor: COLORS.primary, paddingHorizontal: 24, paddingVertical: 10, borderRadius: 10 },
+    retryBtn: { backgroundColor: COLORS.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 },
     retryText: { color: COLORS.white, fontWeight: "600", fontSize: 14 },
 
-    header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingTop: 20, paddingBottom: 10 },
-    title: { color: COLORS.text, fontSize: 22, fontWeight: "700" },
-    totalCount: { color: COLORS.textMuted, fontSize: 13 },
+    // Header — Frame 3: centered title "Lịch sử" + avatar icon
+    header: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        paddingHorizontal: 20,
+        paddingTop: 56,
+        paddingBottom: 16,
+    },
+    title: { color: COLORS.text, fontSize: 22, fontWeight: "800" },
+    headerAvatar: {
+        width: 38,
+        height: 38,
+        borderRadius: 19,
+        backgroundColor: COLORS.surface,
+        justifyContent: "center",
+        alignItems: "center",
+        borderWidth: 1,
+        borderColor: COLORS.border,
+    },
+    headerAvatarText: { fontSize: 20 },
 
-    // SearchBar
-    searchContainer: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, marginBottom: 10, gap: 8 },
-    searchBar: { flex: 1, flexDirection: "row", alignItems: "center", backgroundColor: COLORS.surface, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: COLORS.border, gap: 8 },
-    searchIcon: { fontSize: 15 },
+    // Search bar — Frame 3 rounded pill, light gray
+    searchContainer: { paddingHorizontal: 16, marginBottom: 12 },
+    searchBar: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: COLORS.surface,
+        borderRadius: 12,
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        gap: 8,
+    },
+    searchIcon: { fontSize: 15, opacity: 0.5 },
     searchInput: { flex: 1, color: COLORS.text, fontSize: 14 },
-    clearBtn: { color: COLORS.textMuted, fontSize: 15, fontWeight: "600" },
-    searchSubmitBtn: { backgroundColor: COLORS.primary, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 },
-    searchSubmitText: { color: COLORS.white, fontWeight: "600", fontSize: 14 },
-    searchIndicator: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 16, marginBottom: 8 },
-    searchIndicatorText: { color: COLORS.textMuted, fontSize: 12 },
-    clearSearchLink: { color: COLORS.primary, fontSize: 12, fontWeight: "600" },
+    clearBtn: { color: COLORS.textMuted, fontSize: 15, fontWeight: "600", paddingHorizontal: 4 },
 
-    // Filter bar
-    filterBar: { flexDirection: "row", paddingHorizontal: 16, gap: 8, marginBottom: 10, flexWrap: "wrap" },
-    filterBtn: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
+    // Filter pills
+    filterBar: { flexDirection: "row", paddingHorizontal: 16, gap: 8, marginBottom: 8, flexWrap: "wrap" },
+    filterBtn: { paddingVertical: 6, paddingHorizontal: 14, borderRadius: 20, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
     filterBtnActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-    filterText: { color: COLORS.textMuted, fontSize: 12 },
-    filterTextActive: { color: COLORS.white, fontWeight: "600" },
+    filterText: { color: COLORS.textMuted, fontSize: 12, fontWeight: "500" },
+    filterTextActive: { color: COLORS.white, fontWeight: "700" },
 
-    // List item
-    item: { flexDirection: "row", alignItems: "center", paddingVertical: 12, paddingHorizontal: 16, backgroundColor: COLORS.surface, marginHorizontal: 12, borderRadius: 12 },
-    colorBar: { width: 4, height: 40, borderRadius: 2, marginRight: 12 },
+    // Section title
+    sectionTitle: { color: COLORS.text, fontSize: 17, fontWeight: "800", paddingHorizontal: 16, marginBottom: 8 },
+
+    // Item — Frame 3 style: flat row, image 70px, safety badge colored text
+    item: {
+        flexDirection: "row",
+        alignItems: "center",
+        paddingVertical: 14,
+        paddingHorizontal: 16,
+        backgroundColor: COLORS.white,
+        gap: 14,
+    },
+    imageBox: {
+        width: 70,
+        height: 70,
+        borderRadius: 10,
+        backgroundColor: COLORS.surface,
+        justifyContent: "center",
+        alignItems: "center",
+        overflow: "hidden",
+    },
+    image: { width: "100%", height: "100%", resizeMode: "cover" },
+    imagePlaceholder: { justifyContent: "center", alignItems: "center" },
     itemContent: { flex: 1 },
-    itemBarcode: { color: COLORS.text, fontSize: 14, fontWeight: "600", marginBottom: 4 },
-    itemDate: { color: COLORS.textMuted, fontSize: 11 },
-    itemActions: { alignItems: "flex-end", gap: 6 },
-    ratingBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5 },
-    ratingText: { color: COLORS.white, fontSize: 9, fontWeight: "700", letterSpacing: 0.3 },
-    compareBtn: { backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
-    compareBtnText: { fontSize: 12 },
-    itemArrow: { color: COLORS.textMuted, fontSize: 18, marginLeft: 6 },
-    separator: { height: 8 },
+    itemName: { color: COLORS.text, fontSize: 15, fontWeight: "700", marginBottom: 3 },
+    itemCategory: { color: COLORS.textMuted, fontSize: 12, marginBottom: 6 },
+    // Safety badge row — Frame 3 style: icon + colored text
+    safetyRow: { flexDirection: "row", alignItems: "center", gap: 5 },
+    safetyIcon: { fontSize: 14 },
+    safetyText: { fontSize: 13, fontWeight: "600" },
+    separator: { height: 1, backgroundColor: COLORS.border },
 
+    // Empty state
     emptyState: { flex: 1, justifyContent: "center", alignItems: "center", gap: 10, padding: 40 },
-    emptyEmoji: { fontSize: 48 },
-    emptyTitle: { color: COLORS.text, fontSize: 16, fontWeight: "600" },
-    emptyDesc: { color: COLORS.textMuted, fontSize: 13, textAlign: "center" },
+    emptyEmoji: { fontSize: 52 },
+    emptyTitle: { color: COLORS.text, fontSize: 17, fontWeight: "700" },
+    emptyDesc: { color: COLORS.textMuted, fontSize: 14, textAlign: "center", lineHeight: 20 },
 });

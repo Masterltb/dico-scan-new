@@ -75,7 +75,7 @@ public class GeminiClient {
             return parseResponse(responseBody);
         } catch (Exception ex) {
             log.warn("Gemini call failed for barcode={}: {}", productData.barcode(), ex.getMessage());
-            return FALLBACK;
+            throw new RuntimeException("Gemini analysis failed", ex);
         }
     }
 
@@ -373,7 +373,7 @@ public class GeminiClient {
             return parseAlternativesResponse(raw);
         } catch (Exception ex) {
             log.warn("AI alternatives failed for '{}' ({}): {}", productName, category, ex.getMessage());
-            return Collections.emptyList();
+            throw new RuntimeException("Gemini alternatives failed", ex);
         }
     }
 

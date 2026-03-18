@@ -1,5 +1,6 @@
 // src/screens/AuthScreen.tsx
-// Login / Register screen with tab toggle.
+// Splash + Login/Register — Light Mode theo Frame Figma 1 & 2
+// Splash: gradient tím-hồng lavender, icon glassmorphism giữa màn hình
 
 import React, { useState } from "react";
 import {
@@ -15,6 +16,7 @@ import {
 } from "react-native";
 import { COLORS } from "@/constants/colors";
 import { useAuthStore } from "@/store/authStore";
+import { login as apiLogin, register as apiRegister } from "@/api/auth";
 
 type Tab = "login" | "register";
 
@@ -25,89 +27,87 @@ export default function AuthScreen() {
     const [displayName, setDisplayName] = useState("");
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
-    const { login, register } = useAuthStore();
+    const setFromResponse = useAuthStore((s) => s.setFromResponse);
 
     const handleSubmit = async () => {
         setError(null);
-
-        // Client-side validation
-        if (!email.trim()) {
-            setError("Vui lòng nhập email");
-            return;
-        }
-        if (!password.trim()) {
-            setError("Vui lòng nhập mật khẩu");
-            return;
-        }
-        if (password.length < 6) {
-            setError("Mật khẩu phải từ 6 ký tự trở lên");
-            return;
-        }
+        if (!email.trim()) { setError("Vui lòng nhập email"); return; }
+        if (!password.trim()) { setError("Vui lòng nhập mật khẩu"); return; }
+        if (password.length < 6) { setError("Mật khẩu phải từ 6 ký tự"); return; }
 
         setLoading(true);
         try {
             if (tab === "login") {
-                await login(email.trim(), password);
+                const res = await apiLogin(email.trim(), password);
+                setFromResponse(res);
             } else {
-                await register(email.trim(), password, displayName.trim() || undefined);
+                const res = await apiRegister(email.trim(), password, displayName.trim() || undefined);
+                setFromResponse(res);
             }
         } catch (err: unknown) {
             const axiosErr = err as { response?: { data?: { message?: string } }; message?: string };
-            const message =
-                axiosErr.response?.data?.message ??
-                axiosErr.message ??
-                "Đã xảy ra lỗi. Vui lòng thử lại.";
-            setError(message);
+            setError(axiosErr.response?.data?.message ?? axiosErr.message ?? "Đã xảy ra lỗi. Thử lại.");
         } finally {
             setLoading(false);
         }
     };
 
-    const switchTab = (newTab: Tab) => {
-        setTab(newTab);
-        setError(null);
-    };
+    const switchTab = (newTab: Tab) => { setTab(newTab); setError(null); };
 
     return (
-        <KeyboardAvoidingView
-            style={styles.container}
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-        >
-            <ScrollView
-                contentContainerStyle={styles.scrollContent}
-                keyboardShouldPersistTaps="handled"
+        <View style={styles.root}>
+            {/* === SPLASH HERO — Gradient lavender background === */}
+            <View style={styles.splashSection}>
+                {/* Glassmorphism icon card */}
+                <View style={styles.iconCard}>
+                    <Text style={styles.iconText}>⬛</Text>
+                    {/* Barcode scan icon visual */}
+                    <View style={styles.barcodeIcon}>
+                        <View style={styles.barcodeCornerTL} />
+                        <View style={styles.barcodeCornerTR} />
+                        <View style={styles.barcodeCornerBL} />
+                        <View style={styles.barcodeCornerBR} />
+                        {/* Bars */}
+                        {[0,1,2,3,4].map(i => (
+                            <View key={i} style={[styles.barcodeLine, { left: 12 + i * 9 }]} />
+                        ))}
+                    </View>
+                </View>
+                <Text style={styles.splashTitle}>DICO SCAN</Text>
+                <Text style={styles.splashTagline}>Quét mã vạch, chọn chuẩn riêng bạn</Text>
+            </View>
+
+            {/* === LOGIN FORM CARD (bottom sheet style) === */}
+            <KeyboardAvoidingView
+                style={styles.formSheet}
+                behavior={Platform.OS === "ios" ? "padding" : "height"}
             >
-                {/* Logo / Header */}
-                <View style={styles.header}>
-                    <Text style={styles.logo}>🔍</Text>
-                    <Text style={styles.appName}>DICO Scan</Text>
-                    <Text style={styles.tagline}>
-                        Quét sản phẩm • Kiểm tra an toàn • AI phân tích
-                    </Text>
-                </View>
+                <ScrollView
+                    contentContainerStyle={styles.formContent}
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
+                >
+                    {/* Tab Toggle */}
+                    <View style={styles.tabPill}>
+                        <TouchableOpacity
+                            style={[styles.tab, tab === "login" && styles.tabActive]}
+                            onPress={() => switchTab("login")}
+                        >
+                            <Text style={[styles.tabText, tab === "login" && styles.tabTextActive]}>
+                                Đăng nhập
+                            </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.tab, tab === "register" && styles.tabActive]}
+                            onPress={() => switchTab("register")}
+                        >
+                            <Text style={[styles.tabText, tab === "register" && styles.tabTextActive]}>
+                                Đăng ký
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
 
-                {/* Tab Toggle */}
-                <View style={styles.tabRow}>
-                    <TouchableOpacity
-                        style={[styles.tab, tab === "login" && styles.tabActive]}
-                        onPress={() => switchTab("login")}
-                    >
-                        <Text style={[styles.tabText, tab === "login" && styles.tabTextActive]}>
-                            Đăng nhập
-                        </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                        style={[styles.tab, tab === "register" && styles.tabActive]}
-                        onPress={() => switchTab("register")}
-                    >
-                        <Text style={[styles.tabText, tab === "register" && styles.tabTextActive]}>
-                            Đăng ký
-                        </Text>
-                    </TouchableOpacity>
-                </View>
-
-                {/* Form */}
-                <View style={styles.form}>
+                    {/* Form fields */}
                     {tab === "register" && (
                         <View style={styles.inputGroup}>
                             <Text style={styles.label}>Tên hiển thị</Text>
@@ -117,14 +117,14 @@ export default function AuthScreen() {
                                 onChangeText={setDisplayName}
                                 placeholder="Ví dụ: Nguyễn Văn A"
                                 placeholderTextColor={COLORS.textMuted}
-                                maxLength={100}
                                 autoCapitalize="words"
+                                maxLength={100}
                             />
                         </View>
                     )}
 
                     <View style={styles.inputGroup}>
-                        <Text style={styles.label}>Email *</Text>
+                        <Text style={styles.label}>Email</Text>
                         <TextInput
                             style={styles.input}
                             value={email}
@@ -138,7 +138,7 @@ export default function AuthScreen() {
                     </View>
 
                     <View style={styles.inputGroup}>
-                        <Text style={styles.label}>Mật khẩu *</Text>
+                        <Text style={styles.label}>Mật khẩu</Text>
                         <TextInput
                             style={styles.input}
                             value={password}
@@ -149,14 +149,12 @@ export default function AuthScreen() {
                         />
                     </View>
 
-                    {/* Error */}
                     {error && (
                         <View style={styles.errorBox}>
                             <Text style={styles.errorText}>⚠️ {error}</Text>
                         </View>
                     )}
 
-                    {/* Submit Button */}
                     <TouchableOpacity
                         style={[styles.submitBtn, loading && styles.submitBtnDisabled]}
                         onPress={handleSubmit}
@@ -170,53 +168,154 @@ export default function AuthScreen() {
                             </Text>
                         )}
                     </TouchableOpacity>
-                </View>
 
-                {/* Switch hint */}
-                <Text style={styles.switchHint}>
-                    {tab === "login" ? "Chưa có tài khoản? " : "Đã có tài khoản? "}
-                    <Text
-                        style={styles.switchLink}
-                        onPress={() => switchTab(tab === "login" ? "register" : "login")}
-                    >
-                        {tab === "login" ? "Đăng ký ngay" : "Đăng nhập"}
+                    <Text style={styles.switchHint}>
+                        {tab === "login" ? "Chưa có tài khoản? " : "Đã có tài khoản? "}
+                        <Text
+                            style={styles.switchLink}
+                            onPress={() => switchTab(tab === "login" ? "register" : "login")}
+                        >
+                            {tab === "login" ? "Đăng ký ngay" : "Đăng nhập"}
+                        </Text>
                     </Text>
-                </Text>
-            </ScrollView>
-        </KeyboardAvoidingView>
+                </ScrollView>
+            </KeyboardAvoidingView>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: COLORS.background },
-    scrollContent: { flexGrow: 1, justifyContent: "center", padding: 24, paddingBottom: 40 },
-    header: { alignItems: "center", marginBottom: 36 },
-    logo: { fontSize: 56, marginBottom: 12 },
-    appName: { color: COLORS.text, fontSize: 32, fontWeight: "800", marginBottom: 8 },
-    tagline: { color: COLORS.textMuted, fontSize: 14, textAlign: "center" },
-    tabRow: { flexDirection: "row", backgroundColor: COLORS.surface, borderRadius: 12, padding: 4, marginBottom: 24 },
-    tab: { flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: "center" },
+    root: { flex: 1, backgroundColor: COLORS.splashTop },
+
+    // === Splash hero ===
+    splashSection: {
+        flex: 1,
+        alignItems: "center",
+        justifyContent: "center",
+        paddingBottom: 40,
+        // Gradient simulation (tím → hồng lavender)
+        backgroundColor: "#B8B9F8",
+    },
+    iconCard: {
+        width: 100,
+        height: 100,
+        borderRadius: 28,
+        backgroundColor: "rgba(255,255,255,0.35)",
+        justifyContent: "center",
+        alignItems: "center",
+        marginBottom: 28,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.6)",
+        // Glassmorphism
+        shadowColor: "#6B7FE8",
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.2,
+        shadowRadius: 20,
+        elevation: 8,
+        position: "relative",
+    },
+    iconText: { opacity: 0 }, // hidden, use barcodeIcon
+    barcodeIcon: {
+        position: "absolute",
+        width: 60,
+        height: 60,
+        justifyContent: "center",
+        alignItems: "center",
+    },
+    barcodeCornerTL: { position: "absolute", top: 0, left: 0, width: 14, height: 14, borderTopWidth: 3, borderLeftWidth: 3, borderColor: "#fff" },
+    barcodeCornerTR: { position: "absolute", top: 0, right: 0, width: 14, height: 14, borderTopWidth: 3, borderRightWidth: 3, borderColor: "#fff" },
+    barcodeCornerBL: { position: "absolute", bottom: 0, left: 0, width: 14, height: 14, borderBottomWidth: 3, borderLeftWidth: 3, borderColor: "#fff" },
+    barcodeCornerBR: { position: "absolute", bottom: 0, right: 0, width: 14, height: 14, borderBottomWidth: 3, borderRightWidth: 3, borderColor: "#fff" },
+    barcodeLine: {
+        position: "absolute",
+        width: 3,
+        height: 28,
+        backgroundColor: "#fff",
+        borderRadius: 1,
+        top: 16,
+    },
+    splashTitle: {
+        color: "#FFFFFF",
+        fontSize: 32,
+        fontWeight: "800",
+        letterSpacing: 4,
+        marginBottom: 10,
+        textShadowColor: "rgba(0,0,0,0.15)",
+        textShadowOffset: { width: 0, height: 2 },
+        textShadowRadius: 4,
+    },
+    splashTagline: {
+        color: "rgba(255,255,255,0.85)",
+        fontSize: 15,
+        letterSpacing: 0.3,
+    },
+
+    // === Form sheet (white card at bottom) ===
+    formSheet: {
+        backgroundColor: COLORS.white,
+        borderTopLeftRadius: 28,
+        borderTopRightRadius: 28,
+        paddingTop: 8,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: -4 },
+        shadowOpacity: 0.08,
+        shadowRadius: 16,
+        elevation: 10,
+    },
+    formContent: {
+        paddingHorizontal: 24,
+        paddingTop: 20,
+        paddingBottom: 40,
+        gap: 14,
+    },
+
+    // Pill tab
+    tabPill: {
+        flexDirection: "row",
+        backgroundColor: COLORS.surface,
+        borderRadius: 14,
+        padding: 4,
+        marginBottom: 6,
+    },
+    tab: { flex: 1, paddingVertical: 11, borderRadius: 10, alignItems: "center" },
     tabActive: { backgroundColor: COLORS.primary },
     tabText: { color: COLORS.textMuted, fontSize: 15, fontWeight: "600" },
     tabTextActive: { color: COLORS.white },
-    form: { gap: 16 },
+
+    // Inputs
     inputGroup: { gap: 6 },
-    label: { color: COLORS.text, fontSize: 14, fontWeight: "600" },
+    label: { color: COLORS.textSecondary, fontSize: 13, fontWeight: "600" },
     input: {
         backgroundColor: COLORS.surface,
         color: COLORS.text,
         borderRadius: 12,
         paddingHorizontal: 16,
         paddingVertical: 14,
-        fontSize: 16,
+        fontSize: 15,
         borderWidth: 1,
         borderColor: COLORS.border,
     },
-    errorBox: { backgroundColor: "#450A0A", borderRadius: 10, padding: 12, borderWidth: 1, borderColor: COLORS.danger },
-    errorText: { color: "#FCA5A5", fontSize: 14 },
-    submitBtn: { backgroundColor: COLORS.primary, padding: 16, borderRadius: 14, alignItems: "center", marginTop: 8 },
+    errorBox: {
+        backgroundColor: COLORS.dangerLight,
+        borderRadius: 10,
+        padding: 12,
+        borderWidth: 1,
+        borderColor: COLORS.danger,
+    },
+    errorText: { color: COLORS.dangerText, fontSize: 13 },
+    submitBtn: {
+        backgroundColor: COLORS.primary,
+        paddingVertical: 16,
+        borderRadius: 14,
+        alignItems: "center",
+        shadowColor: COLORS.primary,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 4,
+    },
     submitBtnDisabled: { opacity: 0.6 },
-    submitBtnText: { color: COLORS.white, fontSize: 17, fontWeight: "700" },
-    switchHint: { color: COLORS.textMuted, textAlign: "center", marginTop: 20, fontSize: 14 },
+    submitBtnText: { color: COLORS.white, fontSize: 16, fontWeight: "700" },
+    switchHint: { color: COLORS.textMuted, textAlign: "center", fontSize: 14 },
     switchLink: { color: COLORS.primary, fontWeight: "600" },
 });

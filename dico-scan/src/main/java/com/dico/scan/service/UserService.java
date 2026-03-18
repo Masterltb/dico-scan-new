@@ -38,7 +38,7 @@ public class UserService {
         return new UserPreferencesResponse(
                 allergies,
                 diet,
-                user.getSubscriptionTier().name(),
+                user.getSubscriptionTier() != null ? user.getSubscriptionTier().name() : "FREE",
                 user.isProfileCompleted(),
                 user.getSafetyProfile());
     }
@@ -74,7 +74,7 @@ public class UserService {
         return new UserPreferencesResponse(
                 request.allergies(),
                 request.diet(),
-                user.getSubscriptionTier().name(),
+                user.getSubscriptionTier() != null ? user.getSubscriptionTier().name() : "FREE",
                 user.isProfileCompleted(),
                 user.getSafetyProfile());
     }

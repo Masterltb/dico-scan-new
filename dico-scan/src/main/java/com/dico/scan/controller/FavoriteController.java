@@ -1,7 +1,11 @@
 package com.dico.scan.controller;
 
+import com.dico.scan.entity.User;
 import com.dico.scan.entity.UserFavorite;
+import com.dico.scan.enums.SubscriptionTier;
+import com.dico.scan.exception.PremiumRequiredException;
 import com.dico.scan.repository.UserFavoriteRepository;
+import com.dico.scan.repository.UserRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -36,11 +40,22 @@ import java.util.UUID;
 public class FavoriteController {
 
     private final UserFavoriteRepository favoriteRepository;
+    private final UserRepository userRepository;
+
+    private void verifyPremium(UUID userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        
+        if (user.getSubscriptionTier() == SubscriptionTier.FREE) {
+            throw new PremiumRequiredException("Chức năng Lưu sản phẩm chỉ dành cho User Premium/Gold.");
+        }
+    }
 
     @GetMapping
     @Operation(summary = "Danh sách sản phẩm yêu thích", description = "Trả về tất cả sản phẩm đã đánh dấu, mới nhất trước.")
     public ResponseEntity<List<UserFavorite>> getAll(
             @RequestHeader("X-User-Id") UUID userId) {
+        verifyPremium(userId);
         return ResponseEntity.ok(favoriteRepository.findByUserIdOrderByAddedAtDesc(userId));
     }
 
@@ -49,6 +64,7 @@ public class FavoriteController {
     public ResponseEntity<Map<String, Object>> getStatus(
             @RequestHeader("X-User-Id") UUID userId,
             @PathVariable @Pattern(regexp = "\\d{8,14}") String barcode) {
+        verifyPremium(userId);
         Optional<UserFavorite> fav = favoriteRepository.findByUserIdAndBarcode(userId, barcode);
         return ResponseEntity.ok(Map.of(
                 "isFavorited", fav.isPresent(),
@@ -64,6 +80,8 @@ public class FavoriteController {
             @PathVariable @Pattern(regexp = "\\d{8,14}") String barcode,
             @Parameter(description = "SAFE hoặc AVOID") @RequestParam(defaultValue = "SAFE") String label,
             @Parameter(description = "Ghi chú tùy chọn") @RequestParam(required = false) @Size(max = 200) String note) {
+        
+        verifyPremium(userId);
 
         if (!label.equals("SAFE") && !label.equals("AVOID")) {
             return ResponseEntity.badRequest().build();
@@ -91,6 +109,7 @@ public class FavoriteController {
     public ResponseEntity<Void> remove(
             @RequestHeader("X-User-Id") UUID userId,
             @PathVariable @Pattern(regexp = "\\d{8,14}") String barcode) {
+        verifyPremium(userId);
         favoriteRepository.deleteByUserIdAndBarcode(userId, barcode);
         log.info("Favorite removed: userId={} barcode={}", userId, barcode);
         return ResponseEntity.noContent().build();

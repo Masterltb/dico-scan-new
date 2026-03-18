@@ -3,6 +3,7 @@ package com.dico.scan.controller;
 import com.dico.scan.dto.response.ProductEvaluationResponse;
 import com.dico.scan.service.ProductApplicationService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.Pattern;
 import lombok.RequiredArgsConstructor;
@@ -39,9 +40,11 @@ public class ProductController {
     public ResponseEntity<ProductEvaluationResponse> evaluateProduct(
             @PathVariable @Pattern(regexp = "^[0-9]{8,14}$", message = "Barcode must be 8-14 digits") String barcode,
             @RequestHeader(value = "X-User-Id", required = false) UUID userId,
-            @RequestParam(value = "allergies", required = false) String allergiesParam) {
+            @RequestParam(value = "allergies", required = false) String allergiesParam,
+            @Parameter(description = "Dùng 1 Token để mở khoá Scan Cao Cấp cho Free User") @RequestParam(value = "useToken", required = false, defaultValue = "false") boolean useToken,
+            @Parameter(description = "Quét cho thành viên trong gia đình (Chỉ GOLD)") @RequestParam(value = "profileId", required = false) UUID profileId) {
 
-        log.info("Product evaluation request: barcode={} userId={}", barcode, userId);
+        log.info("Product evaluation request: barcode={} userId={} useToken={} profileId={}", barcode, userId, useToken, profileId);
 
         // Parse query param allergies (used only for PREMIUM users without saved
         // preferences)
@@ -50,7 +53,7 @@ public class ProductController {
                         ? java.util.Arrays.asList(allergiesParam.split(","))
                         : java.util.Collections.emptyList());
 
-        ProductEvaluationResponse response = productService.evaluateProduct(barcode, preferences, userId);
+        ProductEvaluationResponse response = productService.evaluateProduct(barcode, preferences, userId, useToken, profileId);
         return ResponseEntity.ok(response);
     }
 }

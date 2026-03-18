@@ -1,192 +1,301 @@
 // src/screens/UpgradeScreen.tsx
-// Màn hình nâng cấp gói PREMIUM — hiển thị benefits và nút upgrade
+// Nâng cấp DICO Premium — Light Mode theo Frame Figma 2
+// Hero banner lavender gradient + feature list + pricing plans + CTA button
 
-import React from "react";
-import {
-    Alert,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
-} from "react-native";
-import { useNavigation } from "@react-navigation/native";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import React, { useState } from "react";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from "react-native";
+import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { RootStackParamList } from "@/navigation/RootNavigator";
 import { COLORS } from "@/constants/colors";
 import { useAuthStore } from "@/store/authStore";
 import { upgradeToPremdium } from "@/api/subscriptions";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-const PREMIUM_BENEFITS = [
+type Props = NativeStackScreenProps<RootStackParamList, "Upgrade">;
+
+const PLANS = [
     {
-        icon: "🛡️",
-        title: "Hồ sơ An toàn Cá nhân",
-        desc: "Cài đặt dị ứng, thể trạng, tình trạng sức khỏe — AI cảnh báo chính xác cho BẠN",
+        id: "premium_1m",
+        name: "Hàng tháng",
+        price: "35.000đ",
+        priceNum: "35.000",
+        billing: "/ tháng",
+        isGold: false,
+        badge: "",
     },
     {
-        icon: "⚡",
-        title: "Cảnh báo Dị ứng Tức thì",
-        desc: "Quét sản phẩm → nhận cảnh báo ngay nếu chứa chất bạn dị ứng",
-    },
-    {
-        icon: "✨",
-        title: "AI Tóm tắt Cá nhân hóa",
-        desc: "Phân tích dựa trên hồ sơ sức khỏe của bạn, không phải phân tích chung",
-    },
-    {
-        icon: "👶",
-        title: "Bảo vệ Cả Gia đình",
-        desc: "Thiết lập hồ sơ cho con nhỏ, phụ nữ mang thai, người có bệnh lý",
-    },
-    {
-        icon: "🔍",
-        title: "Lịch sử Quét Đầy đủ",
-        desc: "Xem lại toàn bộ sản phẩm đã quét, lọc theo mức độ an toàn",
+        id: "premium_12m",
+        name: "Hàng năm",
+        price: "199.000đ",
+        priceNum: "199.000",
+        billing: "/ 6 tháng",
+        isGold: false,
+        badge: "TIẾT KIỆM 30%",
+        savingsNote: "Tiết kiệm so sánh: 385.000đ",
     },
 ];
 
-export default function UpgradeScreen() {
-    const navigation = useNavigation();
+const FEATURES = [
+    { icon: "👨‍👩‍👧", title: "Quản lý tối đa 3 hồ sơ gia đình", sub: "Tối ưu cho sức khỏe từng Ban thân, Ba,..." },
+    { icon: "⚖️", title: "So sánh sản phẩm không giới hạn", sub: "Đưa ra lựa chọn mua sắm thông minh nhất" },
+    { icon: "📋", title: "Phân tích AI toàn diện", sub: "Chi tiết thành phần & cảnh báo sức khỏe" },
+    { icon: "🚫", title: "Không quảng cáo", sub: "Ưu tiên trải nghiệm đối với mọi nội nhất" },
+];
+
+export default function UpgradeScreen({ navigation }: Props) {
+    const { isAuthenticated } = useAuthStore();
     const queryClient = useQueryClient();
-    const { setFromResponse } = useAuthStore();
+    const [selectedPlan, setSelectedPlan] = useState<string>("premium_12m");
 
     const mutation = useMutation({
         mutationFn: upgradeToPremdium,
         onSuccess: (res) => {
-            // Invalidate preferences cache để refresh tier
             queryClient.invalidateQueries({ queryKey: ["userPreferences"] });
-
+            queryClient.invalidateQueries({ queryKey: ["subscriptionStatus"] });
             if (res.upgraded) {
-                Alert.alert(
-                    "🎉 Chào mừng PREMIUM!",
-                    "Tài khoản của bạn đã được nâng cấp. Hãy thiết lập Hồ sơ An toàn để bắt đầu!",
-                    [{ text: "Thiết lập ngay", onPress: () => navigation.goBack() }]
-                );
+                Alert.alert("🎉 Thành công!", "Gói Premium đã được kích hoạt!", [
+                    { text: "Quay lại", onPress: () => navigation.goBack() }
+                ]);
             } else {
                 Alert.alert("✅", res.message);
                 navigation.goBack();
             }
         },
-        onError: () => {
-            Alert.alert("Lỗi", "Không thể nâng cấp. Vui lòng thử lại.");
-        },
+        onError: () => Alert.alert("Lỗi", "Không thể nâng cấp. Vui lòng thử lại."),
     });
 
+    const handlePurchase = () => {
+        if (!isAuthenticated) {
+            Alert.alert("Cần đăng nhập", "Vui lòng đăng nhập để nâng cấp.");
+            return;
+        }
+        mutation.mutate();
+    };
+
+    const selectedPlanData = PLANS.find(p => p.id === selectedPlan);
+
     return (
-        <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-            {/* Close */}
+        <View style={styles.container}>
+            {/* Close button — X top right */}
             <TouchableOpacity style={styles.closeBtn} onPress={() => navigation.goBack()}>
-                <Text style={styles.closeBtnText}>✕ Đóng</Text>
+                <Text style={styles.closeIcon}>✕</Text>
             </TouchableOpacity>
 
-            {/* Hero */}
-            <View style={styles.hero}>
-                <Text style={styles.heroIcon}>⭐</Text>
-                <Text style={styles.heroTitle}>DICO Premium</Text>
-                <Text style={styles.heroSubtitle}>
-                    Bảo vệ sức khỏe của bạn và gia đình với sức mạnh AI cá nhân hóa
-                </Text>
-            </View>
-
-            {/* Benefits List */}
-            <View style={styles.benefitsList}>
-                {PREMIUM_BENEFITS.map((b, i) => (
-                    <View key={i} style={styles.benefitItem}>
-                        <Text style={styles.benefitIcon}>{b.icon}</Text>
-                        <View style={styles.benefitText}>
-                            <Text style={styles.benefitTitle}>{b.title}</Text>
-                            <Text style={styles.benefitDesc}>{b.desc}</Text>
-                        </View>
+            <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+                {/* ── Hero Banner — Frame 2: lavender purple gradient with star icon ── */}
+                <View style={styles.heroBanner}>
+                    <View style={styles.heroStarWrap}>
+                        <Text style={styles.heroStar}>✨</Text>
                     </View>
-                ))}
-            </View>
+                    <Text style={styles.heroBadge}>PREMIUM ACCESS</Text>
+                </View>
 
-            {/* Compare FREE vs PREMIUM */}
-            <View style={styles.compareCard}>
-                <Text style={styles.compareTitle}>So sánh gói</Text>
-                <View style={styles.compareRow}>
-                    <Text style={styles.compareFeature}>Quét sản phẩm</Text>
-                    <Text style={styles.compareFree}>✅ FREE</Text>
-                    <Text style={styles.comparePrem}>✅ PREMIUM</Text>
-                </View>
-                <View style={styles.compareDivider} />
-                <View style={styles.compareRow}>
-                    <Text style={styles.compareFeature}>Cảnh báo dị ứng</Text>
-                    <Text style={styles.compareFree}>❌</Text>
-                    <Text style={styles.comparePrem}>✅</Text>
-                </View>
-                <View style={styles.compareDivider} />
-                <View style={styles.compareRow}>
-                    <Text style={styles.compareFeature}>Hồ sơ an toàn</Text>
-                    <Text style={styles.compareFree}>❌</Text>
-                    <Text style={styles.comparePrem}>✅</Text>
-                </View>
-                <View style={styles.compareDivider} />
-                <View style={styles.compareRow}>
-                    <Text style={styles.compareFeature}>AI cá nhân hóa</Text>
-                    <Text style={styles.compareFree}>❌</Text>
-                    <Text style={styles.comparePrem}>✅</Text>
-                </View>
-            </View>
-
-            {/* CTA Button */}
-            <TouchableOpacity
-                style={[styles.upgradeBtn, mutation.isPending && styles.upgradeBtnDisabled]}
-                onPress={() => mutation.mutate()}
-                disabled={mutation.isPending}
-                activeOpacity={0.85}
-            >
-                <Text style={styles.upgradeBtnText}>
-                    {mutation.isPending ? "Đang xử lý..." : "⭐ Nâng cấp PREMIUM ngay"}
+                {/* ── Title + subtitle ── */}
+                <Text style={styles.title}>Nâng cấp DICO Premium</Text>
+                <Text style={styles.subtitle}>
+                    Mở khóa toàn bộ sức mạnh phân tích AI cho cả gia đình.
                 </Text>
-            </TouchableOpacity>
 
-            <Text style={styles.devNote}>
-                🧪 Dev mode — nâng cấp ngay lập tức không cần thanh toán
-            </Text>
-        </ScrollView>
+                {/* ── Feature rows — Frame 2 style: icon circle + title + sub ── */}
+                <View style={styles.featureList}>
+                    {FEATURES.map((f, i) => (
+                        <View key={i} style={styles.featureRow}>
+                            <View style={styles.featureIconWrap}>
+                                <Text style={styles.featureIcon}>{f.icon}</Text>
+                            </View>
+                            <View style={styles.featureContent}>
+                                <Text style={styles.featureTitle}>{f.title}</Text>
+                                <Text style={styles.featureSub}>{f.sub}</Text>
+                            </View>
+                        </View>
+                    ))}
+                </View>
+
+                {/* ── Pricing plans ── */}
+                <View style={styles.plansRow}>
+                    {PLANS.map(plan => {
+                        const isSelected = selectedPlan === plan.id;
+                        return (
+                            <TouchableOpacity
+                                key={plan.id}
+                                style={[styles.planCard, isSelected && styles.planCardSelected]}
+                                onPress={() => setSelectedPlan(plan.id)}
+                                activeOpacity={0.85}
+                            >
+                                {plan.badge ? (
+                                    <View style={styles.planBadge}>
+                                        <Text style={styles.planBadgeText}>{plan.badge}</Text>
+                                    </View>
+                                ) : null}
+                                <Text style={[styles.planName, isSelected && styles.planNameSelected]}>{plan.name}</Text>
+                                <Text style={[styles.planPrice, isSelected && styles.planPriceSelected]}>{plan.priceNum}đ</Text>
+                                <Text style={[styles.planBilling, isSelected && styles.planBillingSelected]}>{plan.billing}</Text>
+                            </TouchableOpacity>
+                        );
+                    })}
+                </View>
+
+                {/* Savings note */}
+                {selectedPlanData?.savingsNote && (
+                    <Text style={styles.savingsNote}>{selectedPlanData.savingsNote}</Text>
+                )}
+            </ScrollView>
+
+            {/* ── CTA Footer ── */}
+            <View style={styles.footer}>
+                <TouchableOpacity
+                    style={[styles.buyBtn, mutation.isPending && styles.buyBtnDisabled]}
+                    onPress={handlePurchase}
+                    disabled={mutation.isPending}
+                >
+                    {mutation.isPending ? (
+                        <ActivityIndicator color={COLORS.white} />
+                    ) : (
+                        <Text style={styles.buyBtnText}>Nâng cấp ngay →</Text>
+                    )}
+                </TouchableOpacity>
+                <Text style={styles.terms}>
+                    🔒 Hủy bất kỳ lúc nào · Bảo mật 100%
+                </Text>
+            </View>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: COLORS.background },
-    content: { padding: 24, paddingBottom: 48 },
+    container: { flex: 1, backgroundColor: COLORS.white },
 
-    closeBtn: { alignSelf: "flex-end" },
-    closeBtnText: { color: COLORS.textMuted, fontSize: 14 },
-
-    hero: { alignItems: "center", paddingVertical: 32 },
-    heroIcon: { fontSize: 56, marginBottom: 12 },
-    heroTitle: { color: COLORS.text, fontSize: 32, fontWeight: "800", letterSpacing: 1, marginBottom: 10 },
-    heroSubtitle: { color: COLORS.textMuted, fontSize: 15, textAlign: "center", lineHeight: 22 },
-
-    benefitsList: { gap: 0, marginBottom: 24 },
-    benefitItem: { flexDirection: "row", alignItems: "flex-start", gap: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-    benefitIcon: { fontSize: 28, marginTop: 2 },
-    benefitText: { flex: 1 },
-    benefitTitle: { color: COLORS.text, fontSize: 15, fontWeight: "700", marginBottom: 4 },
-    benefitDesc: { color: COLORS.textMuted, fontSize: 13, lineHeight: 18 },
-
-    compareCard: { backgroundColor: COLORS.surface, borderRadius: 16, padding: 20, marginBottom: 24 },
-    compareTitle: { color: COLORS.text, fontSize: 16, fontWeight: "700", marginBottom: 14, textAlign: "center" },
-    compareRow: { flexDirection: "row", alignItems: "center", paddingVertical: 6 },
-    compareFeature: { flex: 2, color: COLORS.textMuted, fontSize: 13 },
-    compareFree: { flex: 1, color: COLORS.textMuted, fontSize: 13, textAlign: "center" },
-    comparePrem: { flex: 1, color: "#86EFAC", fontSize: 13, textAlign: "center", fontWeight: "700" },
-    compareDivider: { height: 1, backgroundColor: COLORS.border, marginVertical: 4 },
-
-    upgradeBtn: {
-        backgroundColor: COLORS.primary,
-        padding: 18,
-        borderRadius: 16,
+    // Close button — top right
+    closeBtn: {
+        position: "absolute",
+        top: 52,
+        right: 20,
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: COLORS.surface,
+        justifyContent: "center",
         alignItems: "center",
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        zIndex: 10,
+    },
+    closeIcon: { color: COLORS.text, fontSize: 16, fontWeight: "600" },
+
+    content: { paddingTop: 52, paddingHorizontal: 24, paddingBottom: 40 },
+
+    // Hero banner — Frame 2: lavender/purple rounded rect
+    heroBanner: {
+        backgroundColor: "#7C84E8",
+        borderRadius: 20,
+        padding: 28,
+        alignItems: "center",
+        marginBottom: 24,
+        marginTop: 8,
+    },
+    heroStarWrap: {
+        width: 56,
+        height: 56,
+        borderRadius: 28,
+        backgroundColor: "rgba(255,255,255,0.25)",
+        justifyContent: "center",
+        alignItems: "center",
+        marginBottom: 10,
+    },
+    heroStar: { fontSize: 28 },
+    heroBadge: {
+        color: "#E8D5FF",
+        fontSize: 13,
+        fontWeight: "700",
+        letterSpacing: 1.5,
+    },
+
+    // Title + subtitle
+    title: { color: COLORS.text, fontSize: 26, fontWeight: "800", marginBottom: 8 },
+    subtitle: { color: COLORS.textMuted, fontSize: 14, lineHeight: 22, marginBottom: 24 },
+
+    // Feature list — Frame 2
+    featureList: { gap: 0, marginBottom: 24 },
+    featureRow: {
+        flexDirection: "row",
+        alignItems: "flex-start",
+        gap: 14,
+        paddingVertical: 14,
+        borderBottomWidth: 1,
+        borderBottomColor: COLORS.border,
+    },
+    featureIconWrap: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: COLORS.primaryLight,
+        justifyContent: "center",
+        alignItems: "center",
+        flexShrink: 0,
+    },
+    featureIcon: { fontSize: 22 },
+    featureContent: { flex: 1 },
+    featureTitle: { color: COLORS.text, fontSize: 14, fontWeight: "700", marginBottom: 3, lineHeight: 20 },
+    featureSub: { color: COLORS.textMuted, fontSize: 12, lineHeight: 18 },
+
+    // Plans row — Frame 2: 2 column cards side by side
+    plansRow: { flexDirection: "row", gap: 12, marginBottom: 12 },
+    planCard: {
+        flex: 1,
+        backgroundColor: COLORS.surface,
+        borderRadius: 16,
+        padding: 16,
+        alignItems: "center",
+        gap: 4,
+        borderWidth: 2,
+        borderColor: COLORS.border,
+        position: "relative",
+        overflow: "hidden",
+        minHeight: 100,
+        justifyContent: "center",
+    },
+    planCardSelected: { borderColor: COLORS.primary, backgroundColor: COLORS.primaryLight },
+    planBadge: {
+        position: "absolute",
+        top: 0,
+        right: 0,
+        left: 0,
+        backgroundColor: COLORS.primary,
+        paddingVertical: 4,
+        alignItems: "center",
+    },
+    planBadgeText: { color: COLORS.white, fontSize: 10, fontWeight: "800", letterSpacing: 0.5 },
+    planName: { color: COLORS.textMuted, fontSize: 13, fontWeight: "600", marginTop: 16 },
+    planNameSelected: { color: COLORS.primary },
+    planPrice: { color: COLORS.text, fontSize: 20, fontWeight: "800" },
+    planPriceSelected: { color: COLORS.primary },
+    planBilling: { color: COLORS.textMuted, fontSize: 11 },
+    planBillingSelected: { color: COLORS.primary },
+
+    savingsNote: { color: COLORS.successText, fontSize: 12, textAlign: "center", marginBottom: 16, fontWeight: "600" },
+
+    // Footer CTA
+    footer: {
+        padding: 20,
+        borderTopWidth: 1,
+        borderTopColor: COLORS.border,
+        backgroundColor: COLORS.white,
+        gap: 10,
+        alignItems: "center",
+    },
+    buyBtn: {
+        backgroundColor: COLORS.primary,
+        paddingVertical: 16,
+        borderRadius: 14,
+        alignItems: "center",
+        width: "100%",
         shadowColor: COLORS.primary,
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.35,
         shadowRadius: 10,
-        elevation: 6,
+        elevation: 5,
     },
-    upgradeBtnDisabled: { opacity: 0.6 },
-    upgradeBtnText: { color: COLORS.white, fontSize: 17, fontWeight: "800", letterSpacing: 0.3 },
-
-    devNote: { color: COLORS.textMuted, fontSize: 11, textAlign: "center", marginTop: 16, fontStyle: "italic" },
+    buyBtnDisabled: { opacity: 0.7, shadowOpacity: 0 },
+    buyBtnText: { color: COLORS.white, fontSize: 16, fontWeight: "700" },
+    terms: { color: COLORS.textMuted, fontSize: 12 },
 });

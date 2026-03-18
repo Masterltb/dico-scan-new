@@ -25,6 +25,8 @@ Tài liệu này định nghĩa toàn bộ yêu cầu sản phẩm cho **DICO Sc
 - `CameraScanner` — full-screen camera với overlay hướng dẫn frame barcode
 - `RecentHistoryList` — 5 sản phẩm gần nhất (barcode, tên, màu nhãn)
 - `SettingsIconButton` — điều hướng sang PreferencesScreen
+- `TokenBadge` (Dành cho FREE) — Nút/Huy hiệu góc màn hình hiển thị số **Dico Xu** đang có. Bấm vào ra popup mời xem Rewarded Ad.
+- `ProfileSelector` (Dành cho GOLD) — Dropdown nằm trên camera, hiển thị "Đang quét cho: [Tên Profile]". Mặc định là Bản thân. Mở ra danh sách Family Profiles.
 
 **Luồng:**
 ```
@@ -53,6 +55,7 @@ HomeScreen
 - `OverrideWarningCard` — Hiển thị khi `override_reasons` không rỗng (màu đỏ nổi bật)
 - `ProductInfoHeader` — Ảnh sản phẩm, tên, thương hiệu
 - `ContributeButton` — Chỉ hiển thị khi rating = `UNKNOWN`
+- `UnlockPremiumLiteButton` (Dành cho FREE) — Nếu FREE user quét và bị ẩn lý do Allergy Conflict, hiển thị nút "Dùng 1 Xu để xem Cảnh báo Dị ứng!". Nút này dùng API với `?useToken=true`.
 
 **Luồng:**
 ```
@@ -116,6 +119,32 @@ ResultScreen
 **Acceptance Criteria:**
 - [ ] AC_HIST_01: Infinite scroll — gọi API theo trang, 20 items/page
 - [ ] AC_HIST_02: Mỗi item có thể click → điều hướng sang ResultScreen với barcode tương ứng
+
+---
+
+### Screen 06 – FamilyProfilesScreen (`/family-profiles`) (NEW)
+
+**Mục đích:** Quản lý hồ sơ người thân (chỉ dành cho tài khoản `PREMIUM_GOLD`).
+
+**Components:**
+- `ProfileList` — Hiển thị danh sách người thân đã tạo (Tên, Mối quan hệ, Số dị ứng).
+- `AddProfileForm` — Form nhập: Tên, Mối quan hệ, Selector 5 tags Allergy, Chế độ ăn.
+- `PaywallBanner` — Hiển thị overlay khoá tính năng nếu User là FREE hoặc PREMIUM (kèm nút "Nâng cấp Gold 420k").
+
+**Acceptance Criteria:**
+- [ ] AC_FP_01: Chỉ hiển thị nội dung CRUD khi user.subscriptionTier === 'PREMIUM_GOLD'. Nếu không, block bằng PaywallBanner.
+- [ ] AC_FP_02: Đồng bộ list profiles này xuống `HomeScreen` để hiển thị ở component `ProfileSelector`.
+
+---
+
+### Feature – Token / Rewarded Ads (Feature)
+**Mục đích:** Hệ thống thưởng "xu" cho Free User xem quảng cáo.
+
+**Luồng:**
+1. User bấm vào `TokenBadge` ở trang Home → Popup: "Xem 1 video quảng cáo ngắn để nhận 1 Dico Xu".
+2. Khởi tạo Rewarded Video Ad (AdMob/Expo).
+3. `onAdClosed(reward=true)` → App gọi `POST /v1/users/me/tokens/reward`.
+4. Cộng 1 Dico Xu vào Global State.
 
 ---
 

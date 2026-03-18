@@ -1,15 +1,18 @@
 package com.dico.scan.service;
 
 import com.dico.scan.dto.response.ProductEvaluationResponse;
+import com.dico.scan.entity.FamilyProfile;
 import com.dico.scan.entity.Product;
 import com.dico.scan.entity.User;
 import com.dico.scan.enums.ProductCategory;
 import com.dico.scan.enums.SubscriptionTier;
+import com.dico.scan.exception.NotEnoughTokensException;
 import com.dico.scan.exception.ProductNotFoundException;
 import com.dico.scan.external.gemini.AiAnalysisResult;
 import com.dico.scan.external.gemini.GeminiClient;
 import com.dico.scan.external.off.OffProductData;
 import com.dico.scan.external.off.OpenFoodFactsClient;
+import com.dico.scan.repository.FamilyProfileRepository;
 import com.dico.scan.repository.ProductRepository;
 import com.dico.scan.repository.UserRepository;
 import com.dico.scan.service.scoring.ScoringEngineService;
@@ -57,6 +60,8 @@ public class ProductApplicationService {
     private final GeminiClient geminiClient;
     private final ProductCategoryDetector categoryDetector;
     private final ScanHistoryService scanHistoryService;
+    private final UserWalletService walletService;
+    private final FamilyProfileRepository familyProfileRepository;
 
     @Value("${app.product-cache.ttl-days:90}")
     private int cacheTtlDays;
@@ -65,31 +70,61 @@ public class ProductApplicationService {
     // MAIN ENTRY POINT
     // ======================================================
 
-    public ProductEvaluationResponse evaluateProduct(String barcode, Map<String, Object> preferences, UUID userId) {
+    public ProductEvaluationResponse evaluateProduct(String barcode, Map<String, Object> preferences, UUID userId, boolean useToken, UUID profileId) {
         // Resolve subscription tier: anonymous / missing user → FREE
         SubscriptionTier tier = SubscriptionTier.FREE;
         Map<String, Object> safetyProfile = null;
+        List<String> familyAllergies = null;
 
         if (userId != null) {
             Optional<User> userOpt = userRepository.findById(userId);
             if (userOpt.isPresent()) {
                 User user = userOpt.get();
                 tier = user.getSubscriptionTier();
-                // For PREMIUM: merge saved preferences with request preferences
-                if (tier == SubscriptionTier.PREMIUM && preferences == null) {
-                    preferences = user.getPreferences();
+
+                // Handle Tokens for Free users
+                if (tier == SubscriptionTier.FREE && useToken) {
+                    boolean burned = walletService.deductToken(userId);
+                    if (!burned) {
+                        throw new NotEnoughTokensException("Không đủ Xu để mở khóa tính năng cao cấp.");
+                    }
+                    tier = SubscriptionTier.PREMIUM; // Temporarily upgrade for this scan
+                    log.info("User {} used 1 token for Premium scan. Barcode: {}", userId, barcode);
                 }
-                // Load safety profile for PREMIUM users who completed the wizard
-                if (tier == SubscriptionTier.PREMIUM && user.isProfileCompleted()) {
-                    safetyProfile = user.getSafetyProfile();
+
+                // Handle Family Profile for Gold users
+                if (tier == SubscriptionTier.PREMIUM_GOLD && profileId != null) {
+                    Optional<FamilyProfile> profileOpt = familyProfileRepository.findById(profileId);
+                    if (profileOpt.isPresent() && profileOpt.get().getUserId().equals(userId)) {
+                        familyAllergies = profileOpt.get().getAllergies();
+                        log.info("User {} scanning for family profile: {}", userId, profileOpt.get().getName());
+                    }
+                }
+
+                // For PREMIUM: merge saved preferences with request preferences
+                if (tier == SubscriptionTier.PREMIUM || tier == SubscriptionTier.PREMIUM_GOLD) {
+                    if (preferences == null || preferences.isEmpty()) {
+                        preferences = user.getPreferences();
+                    }
+                    // Load safety profile for PREMIUM users who completed the wizard
+                    if (user.isProfileCompleted()) {
+                        safetyProfile = user.getSafetyProfile();
+                    }
                 }
             }
         }
 
-        // FREE tier: clear personal profile → generic scoring and AI
-        final List<String> userAllergies = (tier == SubscriptionTier.PREMIUM)
-                ? extractAllAllergies(preferences, safetyProfile)
-                : Collections.emptyList();
+        // Gather all allergies context
+        final List<String> userAllergies;
+        if (tier == SubscriptionTier.FREE) {
+            userAllergies = Collections.emptyList();
+        } else if (familyAllergies != null) {
+            // Priority 1: Family profile allergies (Gold tier specific scan)
+            userAllergies = familyAllergies;
+        } else {
+            // Priority 2: User's personal allergies
+            userAllergies = extractAllAllergies(preferences, safetyProfile);
+        }
 
         log.debug("evaluateProduct barcode={} tier={} allergies={} hasProfile={}",
                 barcode, tier, userAllergies.size(), safetyProfile != null);

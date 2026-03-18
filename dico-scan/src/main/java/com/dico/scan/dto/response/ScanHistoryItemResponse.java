@@ -12,6 +12,8 @@ import java.util.UUID;
 public record ScanHistoryItemResponse(
         UUID scanId,
         String barcode,
+        String name,
+        String imageUrl,
         OffsetDateTime scannedAt,
         String snapshotColor) {
 }

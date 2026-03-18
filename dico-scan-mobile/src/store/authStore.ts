@@ -3,7 +3,7 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
-import { login as apiLogin, register as apiRegister, AuthResponse } from "@/api/auth";
+import type { AuthResponse } from "@/api/auth";
 
 const AUTH_KEY = "@dico_auth";
 
@@ -17,8 +17,6 @@ interface AuthState {
     isLoading: boolean;
 
     // Actions
-    login: (email: string, password: string) => Promise<void>;
-    register: (email: string, password: string, displayName?: string) => Promise<void>;
     logout: () => Promise<void>;
     hydrate: () => Promise<void>;
     setFromResponse: (res: AuthResponse) => void;
@@ -32,16 +30,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     subscriptionTier: null,
     isAuthenticated: false,
     isLoading: true,
-
-    login: async (email, password) => {
-        const res = await apiLogin(email, password);
-        get().setFromResponse(res);
-    },
-
-    register: async (email, password, displayName) => {
-        const res = await apiRegister(email, password, displayName);
-        get().setFromResponse(res);
-    },
 
     setFromResponse: (res: AuthResponse) => {
         const authData = {

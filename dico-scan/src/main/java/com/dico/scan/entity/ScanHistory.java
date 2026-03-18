@@ -42,6 +42,10 @@ public class ScanHistory {
     @Column(name = "barcode", nullable = false, length = 14)
     private String barcode;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "barcode", referencedColumnName = "barcode", insertable = false, updatable = false)
+    private Product product;
+
     @Column(name = "scanned_at", nullable = false)
     private OffsetDateTime scannedAt;
 

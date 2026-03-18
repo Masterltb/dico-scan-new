@@ -43,14 +43,25 @@ apiClient.interceptors.request.use(async (config) => {
     return config;
 });
 
-// Response Interceptor: Normalize errors to StandardError shape
+import { useAuthStore } from "@/store/authStore";
+
+// Response Interceptor: Normalize errors + Handle 401 Unauthorized
 apiClient.interceptors.response.use(
     (res) => res,
     (error: unknown) => {
-        if (axios.isAxiosError(error) && error.response?.data) {
-            // Backend returned a StandardError
-            return Promise.reject(error.response.data as StandardError);
+        if (axios.isAxiosError(error)) {
+            // 1. Handle 401 (Unauthorized) -> Clear auth and redirect implicitly via RootNavigator
+            if (error.response?.status === 401) {
+                console.warn("API 401 Unauthorized - Logging out...");
+                useAuthStore.getState().logout();
+            }
+
+            // 2. Normalize backend StandardError
+            if (error.response?.data) {
+                return Promise.reject(error.response.data as StandardError);
+            }
         }
+
         // Network error or timeout
         const fallback: StandardError = {
             errorCode: "NETWORK_ERROR",

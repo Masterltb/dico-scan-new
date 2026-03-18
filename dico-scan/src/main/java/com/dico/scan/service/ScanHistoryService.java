@@ -46,10 +46,26 @@ public class ScanHistoryService {
         boolean hasKeyword = keyword != null && !keyword.isBlank();
         log.debug("Scan history query: userId={}, keyword={}, page={}, size={}", userId, keyword, page, clampedSize);
 
+        Page<ScanHistory> pageResult;
         if (hasKeyword) {
-            return scanHistoryRepository.searchHistoryByUserId(userId, keyword.trim(), pageable);
+            pageResult = scanHistoryRepository.searchHistoryByUserId(userId, keyword.trim(), pageable);
+        } else {
+            pageResult = scanHistoryRepository.findHistoryByUserId(userId, pageable);
         }
-        return scanHistoryRepository.findHistoryByUserId(userId, pageable);
+
+        return pageResult.map(s -> {
+            String prodName = s.getProduct() != null ? s.getProduct().getName() : null;
+            String prodImage = s.getProduct() != null ? s.getProduct().getImageUrl() : null;
+
+            return new ScanHistoryItemResponse(
+                s.getId(),
+                s.getBarcode(),
+                prodName,
+                prodImage,
+                s.getScannedAt(),
+                s.getSnapshotColor()
+            );
+        });
     }
 
     /**

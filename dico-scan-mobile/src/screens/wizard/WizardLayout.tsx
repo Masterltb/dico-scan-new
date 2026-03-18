@@ -12,7 +12,7 @@ interface Props {
     subtitle?: string;
     canNext: boolean;
     onNext: () => void;
-    onBack: () => void;
+    onBack?: () => void;
     nextLabel?: string;
     children: React.ReactNode;
 }
@@ -32,21 +32,28 @@ export default function WizardLayout({
 
     return (
         <View style={styles.container}>
-            {/* Progress Bar */}
-            <View style={styles.progressContainer}>
-                <View style={styles.progressTrack}>
-                    <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+            {/* Top Bar with Step label and Progress*/}
+            <View style={styles.topBar}>
+                {onBack && (
+                     <TouchableOpacity style={styles.headerBackBtn} onPress={onBack} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                        <Text style={styles.headerBackIcon}>←</Text>
+                     </TouchableOpacity>
+                )}
+                <View style={styles.progressWrapper}>
+                    <Text style={styles.stepLabel}>Bước {step}/{totalSteps}</Text>
+                    <View style={styles.progressTrack}>
+                        <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+                    </View>
                 </View>
-                <Text style={styles.progressText}>
-                    {step}/{totalSteps}
-                </Text>
             </View>
 
-            {/* Header */}
-            <Text style={styles.title}>{title}</Text>
-            {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
+            {/* Header Text */}
+            <View style={styles.headerTextContainer}>
+                <Text style={styles.title}>{title}</Text>
+                {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
+            </View>
 
-            {/* Content */}
+            {/* Content Area */}
             <ScrollView
                 style={styles.scrollArea}
                 contentContainerStyle={styles.scrollContent}
@@ -55,17 +62,14 @@ export default function WizardLayout({
                 {children}
             </ScrollView>
 
-            {/* Navigation Buttons */}
+            {/* Bottom Navigation */}
             <View style={styles.navRow}>
-                <TouchableOpacity style={styles.backBtn} onPress={onBack}>
-                    <Text style={styles.backBtnText}>← Quay lại</Text>
-                </TouchableOpacity>
                 <TouchableOpacity
                     style={[styles.nextBtn, !canNext && styles.nextBtnDisabled]}
                     onPress={onNext}
                     disabled={!canNext}
                 >
-                    <Text style={styles.nextBtnText}>{nextLabel} →</Text>
+                    <Text style={styles.nextBtnText}>{nextLabel}</Text>
                 </TouchableOpacity>
             </View>
         </View>
@@ -73,19 +77,24 @@ export default function WizardLayout({
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: COLORS.background, padding: 20 },
-    progressContainer: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 20 },
-    progressTrack: { flex: 1, height: 6, backgroundColor: COLORS.surface, borderRadius: 3, overflow: "hidden" },
+    container: { flex: 1, backgroundColor: COLORS.background },
+    topBar: { flexDirection: "row", alignItems: "center", paddingHorizontal: 20, paddingTop: 20, paddingBottom: 10, gap: 16 },
+    headerBackBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.surface, justifyContent: "center", alignItems: "center" },
+    headerBackIcon: { color: COLORS.text, fontSize: 18, fontWeight: "600" },
+    progressWrapper: { flex: 1, gap: 6 },
+    stepLabel: { color: COLORS.primary, fontSize: 13, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5 },
+    progressTrack: { height: 6, backgroundColor: COLORS.surface, borderRadius: 3, overflow: "hidden" },
     progressFill: { height: "100%", backgroundColor: COLORS.primary, borderRadius: 3 },
-    progressText: { color: COLORS.textMuted, fontSize: 13, fontWeight: "600", minWidth: 30 },
-    title: { color: COLORS.text, fontSize: 24, fontWeight: "800", marginBottom: 6 },
-    subtitle: { color: COLORS.textMuted, fontSize: 14, marginBottom: 16, lineHeight: 20 },
+    
+    headerTextContainer: { paddingHorizontal: 20, marginBottom: 16 },
+    title: { color: COLORS.text, fontSize: 26, fontWeight: "800", marginBottom: 8 },
+    subtitle: { color: COLORS.textMuted, fontSize: 15, lineHeight: 22 },
+    
     scrollArea: { flex: 1 },
-    scrollContent: { paddingBottom: 20 },
-    navRow: { flexDirection: "row", gap: 12, paddingTop: 12 },
-    backBtn: { flex: 1, padding: 16, borderRadius: 12, backgroundColor: COLORS.surface, alignItems: "center" },
-    backBtnText: { color: COLORS.textMuted, fontSize: 15, fontWeight: "600" },
-    nextBtn: { flex: 2, padding: 16, borderRadius: 12, backgroundColor: COLORS.primary, alignItems: "center" },
-    nextBtnDisabled: { opacity: 0.4 },
-    nextBtnText: { color: COLORS.white, fontSize: 15, fontWeight: "700" },
+    scrollContent: { paddingHorizontal: 20, paddingBottom: 40 },
+    
+    navRow: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 32, backgroundColor: COLORS.background, borderTopWidth: 1, borderTopColor: COLORS.border },
+    nextBtn: { padding: 18, borderRadius: 16, backgroundColor: COLORS.primary, alignItems: "center", shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
+    nextBtnDisabled: { opacity: 0.5, shadowOpacity: 0 },
+    nextBtnText: { color: COLORS.white, fontSize: 16, fontWeight: "700" },
 });

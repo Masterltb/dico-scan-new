@@ -10,10 +10,15 @@ import { PageResponse, ProductEvaluationResponse, ScanHistoryItem } from "./type
  */
 export const getProduct = async (
     barcode: string,
-    allergies: string[] = []
+    allergies: string[] = [],
+    useToken?: boolean,
+    profileId?: string
 ): Promise<ProductEvaluationResponse> => {
-    const params =
-        allergies.length > 0 ? { allergies: allergies.join(",") } : {};
+    const params: Record<string, unknown> = {};
+    if (allergies.length > 0) params.allergies = allergies.join(",");
+    if (useToken) params.useToken = true;
+    if (profileId) params.profileId = profileId;
+
     const { data } = await apiClient.get<ProductEvaluationResponse>(
         `/v1/products/${barcode}`,
         { params }
