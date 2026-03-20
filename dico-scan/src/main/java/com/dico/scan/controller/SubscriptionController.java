@@ -50,10 +50,18 @@ public class SubscriptionController {
     }
 
     @PostMapping("/users/me/tokens/reward")
-    @Operation(summary = "Nhận thưởng 1 Xu khi xem quảng cáo", description = "Mobile gọi sau khi User xem hết Rewarded Video Ad.")
+    @Operation(summary = "Nhận thưởng 1 Xu khi xem quảng cáo", description = "Chỉ FREE users. PREMIUM/GOLD không cần. Cooldown 30 giây chống spam.")
     public ResponseEntity<TokenRewardResponse> rewardToken(
             @RequestHeader("X-User-Id") UUID userId) {
         
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found: " + userId));
+
+        // PREMIUM/GOLD không cần Token — họ đã unlock tất cả
+        if (user.getSubscriptionTier() != SubscriptionTier.FREE) {
+            return ResponseEntity.badRequest().build();
+        }
+
         int newBalance = walletService.rewardToken(userId);
         return ResponseEntity.ok(new TokenRewardResponse(newBalance));
     }

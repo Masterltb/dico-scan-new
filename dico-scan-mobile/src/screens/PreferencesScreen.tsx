@@ -17,10 +17,20 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useQuery } from "@tanstack/react-query";
 import { COLORS } from "@/constants/colors";
 import { useAuthStore } from "@/store/authStore";
-import { StandardError, UserPreferencesResponse } from "@/api/types";
+import { 
+    StandardError, UserPreferencesResponse,
+    TARGET_OPTIONS, CHILD_AGE_OPTIONS, FOOD_ALLERGY_OPTIONS,
+    COSMETIC_SENSITIVITY_OPTIONS, SKIN_TYPE_OPTIONS,
+    HEALTH_CONDITION_OPTIONS, DIETARY_PREF_OPTIONS,
+    ALERT_LEVEL_OPTIONS, SEVERITY_OPTIONS, TRIMESTER_OPTIONS
+} from "@/api/types";
 import { getPreferences } from "@/api/users";
 import { RootStackParamList } from "@/navigation/RootNavigator";
 import { usePreferencesStore } from "@/store/userPreferencesStore";
+
+// Helper: look up label from options array
+const getLabel = (options: readonly { label: string; value: string }[], value: string): string =>
+    options.find((o) => o.value === value)?.label ?? value;
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -50,9 +60,7 @@ export default function PreferencesScreen() {
     
     // Safety Profile Data
     const safetyProfile = data?.safetyProfile;
-    const allergies = data?.allergies || [];
-    const healthConditions = safetyProfile?.healthConditions || [];
-    const skinTypes = safetyProfile?.cosmeticSensitivities || [];
+    const isCompleted = data?.profileCompleted;
 
     if (isLoading) {
         return (
@@ -168,80 +176,80 @@ export default function PreferencesScreen() {
                 </Text>
             </View>
 
-            {/* Card 1: Dị ứng & Thành phần độc hại */}
-            <View style={styles.detailCard}>
-                <View style={styles.cardHeader}>
-                    <View style={styles.cardIconDanger}>
-                        <Text style={styles.cardIconText}>⚠️</Text>
-                    </View>
-                    <View style={styles.cardHeaderTexts}>
-                        <Text style={styles.cardTitle}>Dị ứng & Thành phần độc hại</Text>
-                        <Text style={styles.cardSub}>Cảnh báo khi quét sản phẩm</Text>
-                    </View>
-                </View>
-                <View style={styles.chipRow}>
-                    {allergies.length > 0 ? (
-                        allergies.map(a => (
-                            <View key={a} style={[styles.chip, styles.chipDangerLight]}>
-                                <Text style={styles.chipTextDanger}>{a} ✕</Text>
-                            </View>
-                        ))
-                    ) : (
-                        <View style={[styles.chip, styles.chipDangerLight]}>
-                            <Text style={styles.chipTextDanger}>Chưa có ✕</Text>
-                        </View>
-                    )}
-                    <TouchableOpacity 
-                        style={[styles.chip, styles.chipPrimaryLight]}
-                        onPress={() => navigation.navigate("SafetyWizard")}
-                    >
-                        <Text style={styles.chipTextPrimary}>⭐ Nâng cấp để thêm</Text>
+            {isCompleted ? (
+                <View style={styles.detailsContainer}>
+                    {safetyProfile?.targets?.length ? (
+                        <DetailRow title="👤 Đối tượng áp dụng" values={safetyProfile.targets.map(t => getLabel(TARGET_OPTIONS, t))} />
+                    ) : null}
+                    
+                    {safetyProfile?.targets?.includes("CHILD") && safetyProfile.childProfile?.ageGroup ? (
+                        <DetailRow title="👶 Hồ sơ Trẻ em" values={[
+                            `Nhóm tuổi: ${getLabel(CHILD_AGE_OPTIONS, safetyProfile.childProfile.ageGroup)}`,
+                            ...(safetyProfile.childProfile.allergies || []).map(a => getLabel(FOOD_ALLERGY_OPTIONS, a)),
+                            ...(safetyProfile.childProfile.customAllergies || [])
+                        ]} />
+                    ) : null}
+
+                    {safetyProfile?.targets?.includes("PREGNANT") && safetyProfile.pregnancyProfile?.trimester ? (
+                        <DetailRow title="🤰 Hồ sơ Thai kỳ" values={[
+                            `Giai đoạn: ${getLabel(TRIMESTER_OPTIONS, safetyProfile.pregnancyProfile.trimester)}`,
+                            ...(safetyProfile.pregnancyProfile.alertLevel ? [`Mức báo: ${getLabel(ALERT_LEVEL_OPTIONS, safetyProfile.pregnancyProfile.alertLevel)}`] : [])
+                        ]} />
+                    ) : null}
+
+                    {((safetyProfile?.foodAllergies?.length ?? 0) > 0 || (safetyProfile?.customFoodAllergies?.length ?? 0) > 0) ? (
+                        <DetailRow title="⚠️ Dị ứng thực phẩm" values={[
+                            ...(safetyProfile?.foodAllergies || []).map(a => getLabel(FOOD_ALLERGY_OPTIONS, a)),
+                            ...(safetyProfile?.customFoodAllergies || [])
+                        ]} danger />
+                    ) : null}
+
+                    {((safetyProfile?.cosmeticSensitivities?.length ?? 0) > 0 || (safetyProfile?.customCosmeticSensitivities?.length ?? 0) > 0) ? (
+                        <DetailRow title="💄 Nhạy cảm mỹ phẩm" values={[
+                            ...(safetyProfile?.cosmeticSensitivities || []).map(a => getLabel(COSMETIC_SENSITIVITY_OPTIONS, a)),
+                            ...(safetyProfile?.customCosmeticSensitivities || [])
+                        ]} danger />
+                    ) : null}
+
+                    {safetyProfile?.skinType ? (
+                        <DetailRow title="🧴 Loại da" values={[getLabel(SKIN_TYPE_OPTIONS, safetyProfile.skinType)]} primary />
+                    ) : null}
+
+                    {safetyProfile?.healthConditions?.length ? (
+                        <DetailRow title="🏥 Tình trạng sức khỏe" values={safetyProfile.healthConditions.map(h => getLabel(HEALTH_CONDITION_OPTIONS, h))} />
+                    ) : null}
+
+                    {safetyProfile?.dietaryPreferences?.length ? (
+                        <DetailRow title="🥗 Chế độ ăn" values={safetyProfile.dietaryPreferences.map(d => getLabel(DIETARY_PREF_OPTIONS, d))} />
+                    ) : null}
+
+                    {(safetyProfile?.alertLevel || safetyProfile?.allergySeverity) ? (
+                        <DetailRow title="🔔 Cấu hình Cảnh báo" values={[
+                            ...(safetyProfile?.alertLevel ? [`Cảnh báo: ${getLabel(ALERT_LEVEL_OPTIONS, safetyProfile.alertLevel)}`] : []),
+                            ...(safetyProfile?.allergySeverity ? [`Mức độ dị ứng: ${getLabel(SEVERITY_OPTIONS, safetyProfile.allergySeverity)}`] : [])
+                        ]} />
+                    ) : null}
+                    
+                    <TouchableOpacity style={styles.editFullBtn} onPress={() => navigation.navigate("SafetyWizard")}>
+                        <Text style={styles.editFullBtnText}>✏️ Chỉnh sửa hồ sơ an toàn</Text>
                     </TouchableOpacity>
                 </View>
-            </View>
-
-            {/* Card 2: Loại da của bạn */}
-            <View style={styles.detailCard}>
-                <View style={styles.cardHeader}>
-                    <View style={styles.cardIconPrimary}>
-                        <Text style={styles.cardIconText}>😊</Text>
-                    </View>
-                    <View style={styles.cardHeaderTexts}>
-                        <Text style={styles.cardTitle}>Loại da của bạn</Text>
-                        <Text style={styles.cardSub}>Tối ưu hóa gợi ý sản phẩm</Text>
-                    </View>
+            ) : (
+                <View style={styles.emptyCard}>
+                    <Text style={styles.emptyCardIcon}>📋</Text>
+                    <Text style={styles.emptyCardTitle}>Chưa thiết lập hồ sơ</Text>
+                    <Text style={styles.emptyCardDesc}>Hãy dành 2 phút để hệ thống AI hiểu rõ cơ thể bạn, giúp cá nhân hóa kết quả phân tích độ an toàn.</Text>
+                    <TouchableOpacity 
+                        style={styles.setupBtn} 
+                        onPress={() => {
+                            if (!isPremium && !isGold) navigation.navigate("Upgrade");
+                            else navigation.navigate("SafetyWizard");
+                        }}
+                    >
+                        <Text style={styles.setupBtnText}>{(isPremium || isGold) ? "Thiết lập ngay" : "⭐ Nâng cấp để thiết lập"}</Text>
+                    </TouchableOpacity>
                 </View>
-                <View style={styles.chipRow}>
-                    {skinTypes.length > 0 ? (
-                        skinTypes.map(s => (
-                            <View key={s} style={[styles.chip, styles.chipOutlinePrimary]}>
-                                <Text style={styles.chipTextOutlinePrimary}>{s}</Text>
-                            </View>
-                        ))
-                    ) : (
-                        <>
-                            <View style={[styles.chip, styles.chipOutlinePrimary]}>
-                                <Text style={styles.chipTextOutlinePrimary}>Da nhạy cảm</Text>
-                            </View>
-                            <View style={[styles.chip, styles.chipOutlineRegular]}>
-                                <Text style={styles.chipTextOutlineRegular}>Da hỗn hợp</Text>
-                            </View>
-                        </>
-                    )}
-                </View>
-            </View>
-
-            {/* Card 3: Tình trạng bệnh lý */}
-            <TouchableOpacity style={styles.detailCardMini} onPress={() => navigation.navigate("SafetyWizard")} activeOpacity={0.7}>
-                <View style={styles.cardIconSuccess}>
-                    <Text style={styles.cardIconText}>💼</Text>
-                </View>
-                <View style={styles.cardHeaderTexts}>
-                    <Text style={styles.cardTitle}>Tình trạng bệnh lý</Text>
-                    <Text style={styles.cardSub}>Dành cho thực phẩm chức năng</Text>
-                </View>
-                <Text style={styles.arrowRight}>›</Text>
-            </TouchableOpacity>
+            )}
 
             {/* Đăng xuất */}
             <View style={styles.logoutWrapper}>
@@ -251,6 +259,27 @@ export default function PreferencesScreen() {
             </View>
 
         </ScrollView>
+    );
+}
+
+function DetailRow({ title, values, danger, primary }: { title: string, values: string[], danger?: boolean, primary?: boolean }) {
+    if (!values || values.length === 0) return null;
+    return (
+        <View style={styles.detailRowContainer}>
+            <Text style={styles.detailRowTitle}>{title}</Text>
+            <View style={styles.chipRow}>
+                {values.map((v, idx) => (
+                    <View key={idx} style={[
+                        styles.chip, 
+                        danger ? styles.chipDangerLight : primary ? styles.chipOutlinePrimary : styles.chipOutlineRegular
+                    ]}>
+                        <Text style={[
+                            danger ? styles.chipTextDanger : primary ? styles.chipTextOutlinePrimary : styles.chipTextOutlineRegular
+                        ]}>{v}</Text>
+                    </View>
+                ))}
+            </View>
+        </View>
     );
 }
 
@@ -409,6 +438,33 @@ const styles = StyleSheet.create({
     cardTitle: { fontSize: 15, fontWeight: "700", color: COLORS.text, marginBottom: 2 },
     cardSub: { fontSize: 12, color: COLORS.textMuted },
     arrowRight: { fontSize: 24, color: COLORS.textMuted, marginLeft: 8 },
+
+    detailsContainer: { marginHorizontal: 20 },
+    detailRowContainer: {
+        backgroundColor: COLORS.white,
+        borderRadius: 20,
+        padding: 16,
+        marginBottom: 12,
+        shadowColor: "#000", shadowOffset: { width:0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 6, elevation: 1,
+    },
+    detailRowTitle: { fontSize: 14, fontWeight: "700", color: COLORS.text, marginBottom: 12 },
+    
+    emptyCard: {
+        marginHorizontal: 20,
+        backgroundColor: COLORS.white,
+        borderRadius: 24,
+        padding: 24,
+        alignItems: "center",
+        borderWidth: 1.5, borderColor: COLORS.border, borderStyle: "dashed",
+    },
+    emptyCardIcon: { fontSize: 40, marginBottom: 12 },
+    emptyCardTitle: { fontSize: 16, fontWeight: "700", color: COLORS.text, marginBottom: 8 },
+    emptyCardDesc: { fontSize: 13, color: COLORS.textMuted, textAlign: "center", lineHeight: 20, marginBottom: 20 },
+    setupBtn: { backgroundColor: COLORS.primary, paddingHorizontal: 24, paddingVertical: 14, borderRadius: 12, width: "100%", alignItems: "center" },
+    setupBtnText: { color: COLORS.white, fontWeight: "700", fontSize: 15 },
+    
+    editFullBtn: { marginTop: 8, marginBottom: 16, backgroundColor: COLORS.white, paddingVertical: 14, borderRadius: 16, alignItems: "center", borderWidth: 1, borderColor: COLORS.primaryLight, shadowColor: "#000", shadowOffset: {width:0, height:2}, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1 },
+    editFullBtnText: { color: COLORS.primary, fontWeight: "700", fontSize: 14 },
 
     chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
     chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20 },

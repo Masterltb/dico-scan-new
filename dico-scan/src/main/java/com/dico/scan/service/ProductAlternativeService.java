@@ -36,6 +36,7 @@ public class ProductAlternativeService {
     private final ProductRepository productRepository;
     private final UserRepository userRepository;
     private final GeminiClient geminiClient;
+    private final AffiliateService affiliateService;
 
     /** Minimum DB results before calling Gemini to supplement */
     private static final int MIN_DB_RESULTS = 3;
@@ -84,7 +85,8 @@ public class ProductAlternativeService {
                     alt.getCategory(),
                     reason,
                     "DB",
-                    true));
+                    true,
+                    null)); // affiliateLink will be filled later
         }
 
         // ── Step 2: Gemini supplement when DB results insufficient ────
@@ -109,14 +111,29 @@ public class ProductAlternativeService {
                         category,
                         ai.reason(),
                         "AI",
-                        false // Not directly scannable (no barcode)
+                        false, // Not directly scannable (no barcode)
+                        null // No barcode to find affiliate link
                 ));
             }
         }
 
         log.debug("Alternatives for barcode={}: {} DB + {} AI",
                 barcode, dbProducts.size(), results.size() - dbProducts.size());
-        return results;
+                
+        List<String> barcodes = results.stream()
+                .filter(r -> r.barcode() != null)
+                .map(AlternativeProductResponse::barcode)
+                .toList();
+        Map<String, String> affiliateLinks = affiliateService.getAffiliateLinks(barcodes);
+
+        return results.stream()
+                .map(r -> new AlternativeProductResponse(
+                        r.barcode(), r.name(), r.brand(), r.imageUrl(),
+                        r.rating(), r.score(), r.category(), r.reason(), r.source(),
+                        r.isScannableInApp(),
+                        r.barcode() != null ? affiliateLinks.get(r.barcode()) : null
+                ))
+                .toList();
     }
 
     /** Build human-readable reason for a DB alternative */

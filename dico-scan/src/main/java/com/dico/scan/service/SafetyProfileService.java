@@ -40,8 +40,8 @@ public class SafetyProfileService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found: " + userId));
 
-        if (user.getSubscriptionTier() != SubscriptionTier.PREMIUM) {
-            throw new PremiumRequiredException("Safety Profile");
+        if (user.getSubscriptionTier() == SubscriptionTier.FREE) {
+            throw new PremiumRequiredException("Safety Profile requires PREMIUM or PREMIUM_GOLD");
         }
 
         Map<String, Object> profile = buildCleanProfile(request);

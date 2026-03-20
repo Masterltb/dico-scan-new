@@ -8,12 +8,13 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 import java.time.OffsetDateTime;
-import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
  * Stores profile data for a user's family members.
  * ONLY applicable for PREMIUM_GOLD users.
+ * V9: Now stores a full SafetyProfile JSONB instead of simple allergies/diet.
  */
 @Entity
 @Table(name = "family_profiles", indexes = {
@@ -35,18 +36,18 @@ public class FamilyProfile {
     @Column(name = "name", nullable = false, length = 100)
     private String name;
 
-    /** Relationship: CHILD, SPOUSE, PARENT, OTHER */
+    /** Relationship: CON_CAI, VO_CHONG, BO_ME, OTHER */
     @Column(name = "relationship", nullable = false, length = 50)
     private String relationship;
 
-    /** Mảng dị ứng của người thân (ví dụ: ["peanut", "milk"]) */
+    /**
+     * Full safety profile for this family member.
+     * Same structure as user's own safety_profile JSONB.
+     * E.g.: {"targets":["CHILD"],"foodAllergies":["peanut"],"skinType":"SENSITIVE",...}
+     */
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "allergies", columnDefinition = "jsonb", nullable = false)
-    private List<String> allergies = List.of();
-
-    /** Chế độ ăn kiêng (Ví dụ: VEGAN, NONE) */
-    @Column(name = "diet", length = 50)
-    private String diet = "NONE";
+    @Column(name = "safety_profile", columnDefinition = "jsonb", nullable = false)
+    private Map<String, Object> safetyProfile = new java.util.HashMap<>();
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;

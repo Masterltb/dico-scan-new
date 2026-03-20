@@ -231,17 +231,14 @@ export interface TokenRewardResponse {
 export interface CreateFamilyProfileRequest {
     name: string;
     relationship: string;
-    allergies: string[];
-    diet: string;
+    safetyProfile?: Partial<SafetyProfileRequest>;
 }
 
 export interface FamilyProfileResponse {
     id: string;
-    userId: string;
     name: string;
     relationship: string;
-    allergies: string[];
-    diet: string;
+    safetyProfile: Partial<SafetyProfileRequest>;
 }
 
 // ===== FAVORITE TYPES =====

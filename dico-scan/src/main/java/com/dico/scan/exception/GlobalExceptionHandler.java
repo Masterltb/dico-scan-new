@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+
 /**
  * Centralized exception mapping to StandardError responses.
  * Every error response includes a unique trace_id for log correlation.
@@ -36,6 +37,15 @@ public class GlobalExceptionHandler {
                 log.info("[{}] Premium feature blocked: {}", traceId, ex.getMessage());
                 return ResponseEntity.status(HttpStatus.FORBIDDEN)
                                 .body(new StandardError("PREMIUM_REQUIRED", ex.getMessage(), traceId));
+        }
+        
+        @ExceptionHandler(TooManyRequestsException.class)
+        public ResponseEntity<StandardError> handleTooManyRequests(TooManyRequestsException ex,
+                        HttpServletRequest request) {
+                String traceId = generateTraceId(request);
+                log.warn("[{}] Rate limited: {}", traceId, ex.getMessage());
+                return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                                .body(new StandardError("TOO_MANY_REQUESTS", ex.getMessage(), traceId));
         }
         
         @ExceptionHandler(NotEnoughTokensException.class)

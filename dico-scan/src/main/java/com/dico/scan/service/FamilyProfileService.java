@@ -12,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -21,20 +22,22 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class FamilyProfileService {
 
+    private static final int MAX_FAMILY_PROFILES = 3;
+
     private final FamilyProfileRepository familyProfileRepository;
     private final UserRepository userRepository;
 
-    private void verifyPremium(UUID userId) {
+    private void verifyPremiumGold(UUID userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
         
-        if (user.getSubscriptionTier() == SubscriptionTier.FREE) {
-            throw new RuntimeException("PREMIUM_REQUIRED: Chức năng Family Profile chỉ dành cho thành viên Premium.");
+        if (user.getSubscriptionTier() != SubscriptionTier.PREMIUM_GOLD) {
+            throw new RuntimeException("PREMIUM_GOLD_REQUIRED: Chức năng Family Profile chỉ dành cho thành viên Premium GOLD.");
         }
     }
 
     public List<FamilyProfileResponse> getProfiles(UUID userId) {
-        verifyPremium(userId);
+        verifyPremiumGold(userId);
         
         return familyProfileRepository.findByUserId(userId)
                 .stream()
@@ -44,14 +47,19 @@ public class FamilyProfileService {
 
     @Transactional
     public FamilyProfileResponse addProfile(UUID userId, CreateFamilyProfileRequest request) {
-        verifyPremium(userId);
+        verifyPremiumGold(userId);
+
+        // Enforce 3-profile limit
+        long existingCount = familyProfileRepository.countByUserId(userId);
+        if (existingCount >= MAX_FAMILY_PROFILES) {
+            throw new RuntimeException("MAX_PROFILES_REACHED: Bạn chỉ được tạo tối đa " + MAX_FAMILY_PROFILES + " hồ sơ gia đình.");
+        }
 
         FamilyProfile profile = new FamilyProfile();
         profile.setUserId(userId);
         profile.setName(request.getName());
         profile.setRelationship(request.getRelationship());
-        profile.setAllergies(request.getAllergies() != null ? request.getAllergies() : List.of());
-        profile.setDiet(request.getDiet() != null ? request.getDiet() : "NONE");
+        profile.setSafetyProfile(request.getSafetyProfile() != null ? request.getSafetyProfile() : new HashMap<>());
 
         FamilyProfile saved = familyProfileRepository.save(profile);
         log.info("User {} added Family Profile: {}", userId, saved.getId());
@@ -60,7 +68,7 @@ public class FamilyProfileService {
 
     @Transactional
     public FamilyProfileResponse updateProfile(UUID userId, UUID profileId, CreateFamilyProfileRequest request) {
-        verifyPremium(userId);
+        verifyPremiumGold(userId);
 
         FamilyProfile profile = familyProfileRepository.findById(profileId)
                 .orElseThrow(() -> new RuntimeException("Profile not found or does not belong to you"));
@@ -71,8 +79,7 @@ public class FamilyProfileService {
 
         profile.setName(request.getName());
         profile.setRelationship(request.getRelationship());
-        profile.setAllergies(request.getAllergies() != null ? request.getAllergies() : List.of());
-        profile.setDiet(request.getDiet() != null ? request.getDiet() : "NONE");
+        profile.setSafetyProfile(request.getSafetyProfile() != null ? request.getSafetyProfile() : new HashMap<>());
 
         FamilyProfile saved = familyProfileRepository.save(profile);
         return mapToResponse(saved);
@@ -80,7 +87,7 @@ public class FamilyProfileService {
 
     @Transactional
     public void deleteProfile(UUID userId, UUID profileId) {
-        verifyPremium(userId);
+        verifyPremiumGold(userId);
 
         FamilyProfile profile = familyProfileRepository.findById(profileId)
                 .orElseThrow(() -> new RuntimeException("Profile not found"));
@@ -98,8 +105,7 @@ public class FamilyProfileService {
                 .id(p.getId())
                 .name(p.getName())
                 .relationship(p.getRelationship())
-                .allergies(p.getAllergies())
-                .diet(p.getDiet())
+                .safetyProfile(p.getSafetyProfile())
                 .build();
     }
 }

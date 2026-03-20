@@ -20,6 +20,7 @@ interface AuthState {
     logout: () => Promise<void>;
     hydrate: () => Promise<void>;
     setFromResponse: (res: AuthResponse) => void;
+    updateSubscriptionTier: (tier: string) => void;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -42,6 +43,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         set({ ...authData, isAuthenticated: true, isLoading: false });
 
         // Persist to AsyncStorage
+        AsyncStorage.setItem(AUTH_KEY, JSON.stringify(authData)).catch(console.error);
+    },
+
+    updateSubscriptionTier: (tier: string) => {
+        set({ subscriptionTier: tier });
+        const currentData = get();
+        const authData = {
+            token: currentData.token,
+            userId: currentData.userId,
+            email: currentData.email,
+            displayName: currentData.displayName,
+            subscriptionTier: tier,
+        };
         AsyncStorage.setItem(AUTH_KEY, JSON.stringify(authData)).catch(console.error);
     },
 

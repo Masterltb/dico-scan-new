@@ -71,6 +71,11 @@ app:
     gemini-url: ${GEMINI_MODEL_URL:https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent}
   product-cache:
     ttl-days: 90   # Products older than 90 days are considered stale
+  shopee:
+    enabled: false
+    affiliate-id: ${SHOPEE_AFFILIATE_ID:}
+    api-key: ${SHOPEE_API_KEY:}
+    api-secret: ${SHOPEE_API_SECRET:}
   jwt:
     secret: ${JWT_SECRET:dico-scan-default-secret-key-change-in-prod-minimum-32-chars}
     expiration-ms: 604800000  # 7 days

@@ -10,4 +10,5 @@ import java.util.UUID;
 @Repository
 public interface FamilyProfileRepository extends JpaRepository<FamilyProfile, UUID> {
     List<FamilyProfile> findByUserId(UUID userId);
+    long countByUserId(UUID userId);
 }

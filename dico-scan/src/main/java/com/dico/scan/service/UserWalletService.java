@@ -8,7 +8,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
+
+import com.dico.scan.exception.TooManyRequestsException;
 
 @Slf4j
 @Service
@@ -29,10 +32,27 @@ public class UserWalletService {
         return walletRepository.save(wallet);
     }
 
+    private static final int REWARD_COOLDOWN_SECONDS = 30;
+
     @Transactional
     public int rewardToken(UUID userId) {
         UserWallet wallet = getWalletByUserId(userId);
+
+        // Anti-spam cooldown check
+        if (wallet.getLastRewardedAt() != null) {
+            long secondsSinceLastReward = ChronoUnit.SECONDS.between(
+                wallet.getLastRewardedAt(), OffsetDateTime.now()
+            );
+            if (secondsSinceLastReward < REWARD_COOLDOWN_SECONDS) {
+                throw new TooManyRequestsException(
+                    "Cooldown active. Please wait " +
+                    (REWARD_COOLDOWN_SECONDS - secondsSinceLastReward) + " seconds."
+                );
+            }
+        }
+
         wallet.setTokens(wallet.getTokens() + 1);
+        wallet.setLastRewardedAt(OffsetDateTime.now());
         walletRepository.save(wallet);
         log.info("User {} rewarded 1 token. New balance: {}", userId, wallet.getTokens());
         return wallet.getTokens();

@@ -25,6 +25,8 @@ import { useAuthStore } from "@/store/authStore";
 import { useSubscriptionStore } from "@/store/subscriptionStore";
 import { AlternativesSection } from "@/components/AlternativesSection";
 import { ScoreRing } from "@/components/ScoreRing";
+import { AdBanner } from "@/components/AdBanner";
+import { useRewardedAd } from "@/hooks/useRewardedAd";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Result">;
 
@@ -35,6 +37,17 @@ export default function ResultScreen({ route, navigation }: Props) {
     const { isAuthenticated } = useAuthStore();
     const { earnToken } = useSubscriptionStore();
     const queryClient = useQueryClient();
+
+    // ── Real AdMob Rewarded Video ──────────────────────────────────
+    const { isLoaded: adLoaded, isLoading: adLoading, showAd, didEarnReward } = useRewardedAd();
+
+    // Khi nhận thưởng thành công (SDK callback) → refetch product với Premium view
+    React.useEffect(() => {
+        if (didEarnReward) {
+            Alert.alert('🎉 Nhận được 1 Xu!', 'Đang mở khóa kết quả phân tích sâu...');
+            refetch();
+        }
+    }, [didEarnReward, refetch]);
 
     // ── Favorite state ────────────────────────────────────────────
     const { data: favStatus } = useQuery({
@@ -102,15 +115,13 @@ export default function ResultScreen({ route, navigation }: Props) {
         }
     };
 
-    // ── Token Ads Handler ─────────────────────────────────────────
-    const handleWatchAdForToken = async () => {
-        try {
-            await earnToken();
-            Alert.alert("Thành công", "Bạn đã nhận được 1 Xu DICO! Đang phân tích lại sản phẩm...");
-            refetch(); // Refetch the product since we now have tokens
-        } catch (e: any) {
-             Alert.alert("Lỗi", e.message || "Không thể nhận xu lúc này.");
+    // ── Token Ads Handler — sử dụng SDK thật ─────────────────────
+    const handleWatchAdForToken = () => {
+        if (!adLoaded) {
+            Alert.alert('Quảng cáo chưa sẵn sàng', 'Vui lòng thử lại sau vài giây.');
+            return;
         }
+        showAd(); // SDK sẽ hiển thị video, và tự động cộng token qua hook
     };
 
     // ── Loading/Error states ──────────────────────────────────────
@@ -142,8 +153,10 @@ export default function ResultScreen({ route, navigation }: Props) {
                      <Text style={[styles.muted, { textAlign: 'center', marginBottom: 20 }]}>
                          Bạn cần 1 Xu DICO để phân tích sâu bằng AI. Xem một video ngắn để nhận 1 Xu ngay lập tức!
                      </Text>
-                     <TouchableOpacity style={styles.retryBtn} onPress={handleWatchAdForToken}>
-                         <Text style={styles.retryText}>Xem Quảng Cáo</Text>
+                     <TouchableOpacity style={styles.retryBtn} onPress={handleWatchAdForToken} disabled={!adLoaded}>
+                         <Text style={styles.retryText}>
+                             {adLoading ? 'Đang tải quảng cáo...' : adLoaded ? '▶ Xem Quảng Cáo (+1 Xu)' : 'Quảng cáo chưa sẵn sàng'}
+                         </Text>
                      </TouchableOpacity>
                      <TouchableOpacity style={{ marginTop: 12 }} onPress={() => navigation.setParams({ useToken: false })}>
                          <Text style={styles.seeAllLink}>Quét với thông tin cơ bản →</Text>
@@ -292,6 +305,9 @@ export default function ResultScreen({ route, navigation }: Props) {
                 barcode={barcode}
                 currentRating={product.rating}
             />
+
+            {/* Banner Ad — only for FREE users, at the bottom */}
+            <AdBanner />
         </ScrollView>
     );
 }

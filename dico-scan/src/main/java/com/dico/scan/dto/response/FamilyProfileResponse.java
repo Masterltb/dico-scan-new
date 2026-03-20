@@ -5,7 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Data
@@ -16,6 +16,6 @@ public class FamilyProfileResponse {
     private UUID id;
     private String name;
     private String relationship;
-    private List<String> allergies;
-    private String diet;
+    /** Full safety profile JSON (same structure as user's own safety profile) */
+    private Map<String, Object> safetyProfile;
 }

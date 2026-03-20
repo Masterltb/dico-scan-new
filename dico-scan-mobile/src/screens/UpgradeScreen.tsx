@@ -52,7 +52,7 @@ const FEATURES = [
 ];
 
 export default function UpgradeScreen({ navigation }: Props) {
-    const { isAuthenticated } = useAuthStore();
+    const { isAuthenticated, updateSubscriptionTier } = useAuthStore();
     const queryClient = useQueryClient();
     const [selectedPlan, setSelectedPlan] = useState<string>("premium_12m");
 
@@ -61,6 +61,10 @@ export default function UpgradeScreen({ navigation }: Props) {
         onSuccess: (res, tier) => {
             queryClient.invalidateQueries({ queryKey: ["userPreferences"] });
             queryClient.invalidateQueries({ queryKey: ["subscriptionStatus"] });
+            
+            // Sync the local authStore to instantly unlock Premium UI features
+            updateSubscriptionTier(tier);
+
             if (res.upgraded) {
                 Alert.alert("🎉 Thành công!", `Gói ${tier} đã được kích hoạt!`, [
                     { text: "Quay lại", onPress: () => navigation.goBack() }

@@ -17,6 +17,7 @@ import {
 import { RootStackParamList } from "@/navigation/RootNavigator";
 import { COLORS } from "@/constants/colors";
 import { getFavorites, removeFavorite, FavoriteItem } from "@/api/stats";
+import { useAuthStore } from "@/store/authStore";
 
 type FilterType = "ALL" | "SAFE" | "AVOID";
 
@@ -31,10 +32,14 @@ export default function FavoritesScreen() {
     const queryClient = useQueryClient();
     const [filter, setFilter] = useState<FilterType>("ALL");
 
+    const tier = useAuthStore((s) => s.subscriptionTier);
+    const isFree = tier === "FREE" || !tier;
+
     const { data, isLoading, error, refetch } = useQuery({
         queryKey: ["favorites"],
         queryFn: getFavorites,
         staleTime: 1000 * 30,
+        enabled: !isFree,
     });
 
     const removeMutation = useMutation({
@@ -61,6 +66,19 @@ export default function FavoritesScreen() {
 
     const filtered =
         filter === "ALL" ? (data ?? []) : (data ?? []).filter((f) => f.label === filter);
+
+    if (isFree) {
+        return (
+            <View style={styles.center}>
+                <Text style={{ fontSize: 40, marginBottom: 10 }}>💎</Text>
+                <Text style={styles.title}>Tính năng Premium</Text>
+                <Text style={styles.muted}>Nâng cấp tài khoản để lưu trữ danh sách sản phẩm Yêu thích.</Text>
+                <TouchableOpacity style={[styles.retryBtn, { marginTop: 15 }]} onPress={() => navigation.navigate("Upgrade")}>
+                    <Text style={styles.retryText}>Xem gói Nâng cấp</Text>
+                </TouchableOpacity>
+            </View>
+        );
+    }
 
     if (isLoading) {
         return (

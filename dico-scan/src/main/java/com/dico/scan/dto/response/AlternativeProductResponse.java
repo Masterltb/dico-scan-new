@@ -41,5 +41,8 @@ public record AlternativeProductResponse(
         String source,
 
         /** true nếu có barcode → mobile có thể navigate/quét */
-        boolean isScannableInApp) {
+        boolean isScannableInApp,
+
+        /** Shopee affiliate link. Null nếu nguồn = "AI" hoặc không tìm thấy trên sàn. */
+        String affiliateLink) {
 }

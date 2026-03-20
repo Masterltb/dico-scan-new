@@ -59,5 +59,8 @@ public record ProductEvaluationResponse(
          * Shown in "📋 Thành phần" expandable section in mobile.
          * Null when OFF data does not have ingredient info.
          */
-        String ingredientsText) {
+        String ingredientsText,
+
+        /** Shopee/Lazada affiliate link. Null nếu sản phẩm không có trên sàn. */
+        String affiliateLink) {
 }

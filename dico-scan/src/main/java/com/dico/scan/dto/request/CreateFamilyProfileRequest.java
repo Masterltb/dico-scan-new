@@ -5,7 +5,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 
-import java.util.List;
+import java.util.Map;
 
 @Data
 @NoArgsConstructor
@@ -17,7 +17,6 @@ public class CreateFamilyProfileRequest {
     @NotBlank(message = "Mối quan hệ không được để trống")
     private String relationship;
     
-    private List<String> allergies;
-    
-    private String diet;
+    /** Full safety profile JSON object mirroring SafetyProfileRequest structure */
+    private Map<String, Object> safetyProfile;
 }

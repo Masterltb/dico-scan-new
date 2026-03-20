@@ -30,12 +30,15 @@ import {
 
 type Props = NativeStackScreenProps<WizardStackParamList, "WizardConfirm">;
 
+import { useQueryClient } from "@tanstack/react-query";
+
 // Helper: look up label from options array
 const getLabel = (options: readonly { label: string; value: string }[], value: string): string =>
     options.find((o) => o.value === value)?.label ?? value;
 
 export default function WizardConfirmScreen({ navigation }: Props) {
     const store = useSafetyProfileStore();
+    const queryClient = useQueryClient();
     const [saving, setSaving] = useState(false);
 
     const handleSave = async () => {
@@ -43,6 +46,10 @@ export default function WizardConfirmScreen({ navigation }: Props) {
         try {
             const payload = store.toRequest();
             await saveSafetyProfile(payload);
+            
+            // Xóa cache để màn Preferences tải lại dữ liệu mới nhất
+            queryClient.invalidateQueries({ queryKey: ["userPreferences"] });
+            
             Alert.alert(
                 "✅ Hoàn tất!",
                 "Hồ sơ an toàn đã được lưu. AI sẽ sử dụng hồ sơ này khi phân tích sản phẩm cho bạn.",

@@ -38,6 +38,11 @@ public class UserWallet {
     @Column(name = "premium_expiry_date")
     private OffsetDateTime premiumExpiryDate;
 
+    /** Thời điểm lần cuối user nhận thưởng Token từ Rewarded Ads.
+     *  Dùng để enforce cooldown 30 giây chống spam. Null = chưa bao giờ nhận. */
+    @Column(name = "last_rewarded_at")
+    private OffsetDateTime lastRewardedAt;
+
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
 
