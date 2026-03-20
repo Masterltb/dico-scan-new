@@ -1,13 +1,15 @@
 // src/screens/HistoryScreen.tsx
-// Lịch sử quét — Light Mode theo Frame Figma 3
-// Flat list + image 70px + safety badge (✅ An toàn / ⚠️ Cẩn thận)
+// Lịch sử quét — đọc từ LOCAL AsyncStorage (scanHistory.ts)
+// Đảm bảo cả mock lẫn sản phẩm thật đều hiển thị sau khi quét
+// Fallback: nếu local rỗng thì gọi API backend để migrate
 
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import React, { useState, useCallback } from "react";
 import {
     ActivityIndicator,
+    Alert,
     FlatList,
     Image,
     StyleSheet,
@@ -16,13 +18,19 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
 import { RootStackParamList } from "@/navigation/RootNavigator";
 import { COLORS } from "@/constants/colors";
-import { queryKeys } from "@/constants/queryKeys";
-import { getScanHistory, searchHistory } from "@/api/products";
-import { RatingColor, ScanHistoryItem } from "@/api/types";
+import {
+    getLocalHistory,
+    searchLocalHistory,
+    removeFromHistory,
+    clearLocalHistory,
+    LocalScanRecord,
+} from "@/utils/scanHistory";
 
-type FilterType = "ALL" | RatingColor;
+type NavProp = NativeStackNavigationProp<RootStackParamList>;
+type FilterType = "ALL" | "GREEN" | "YELLOW" | "RED";
 
 const FILTERS: { label: string; value: FilterType; emoji: string }[] = [
     { label: "Tất cả", value: "ALL", emoji: "" },
@@ -32,66 +40,116 @@ const FILTERS: { label: string; value: FilterType; emoji: string }[] = [
 ];
 
 const SAFETY_ICON: Record<string, string> = {
-    GREEN: "✅",
-    YELLOW: "⚠️",
-    RED: "🚫",
-    UNKNOWN: "❓",
+    GREEN: "✅", YELLOW: "⚠️", RED: "🚫",
 };
-
 const SAFETY_LABEL: Record<string, string> = {
-    GREEN: "An toàn",
-    YELLOW: "Cẩn thận",
-    RED: "Nguy hiểm",
-    UNKNOWN: "Chưa rõ",
+    GREEN: "An toàn", YELLOW: "Cẩn thận", RED: "Nguy hiểm",
+};
+const SAFETY_COLOR: Record<string, string> = {
+    GREEN: COLORS.success, YELLOW: COLORS.warning, RED: COLORS.danger,
+};
+const CATEGORY_ICON: Record<string, string> = {
+    FOOD: "🥗", BEAUTY: "🧴", TOY: "🧸",
 };
 
-const SAFETY_COLOR: Record<string, string> = {
-    GREEN: COLORS.success,
-    YELLOW: COLORS.warning,
-    RED: COLORS.danger,
-    UNKNOWN: COLORS.textMuted,
-};
+function formatTime(iso: string): string {
+    try {
+        const d = new Date(iso);
+        const now = new Date();
+        const diffMs = now.getTime() - d.getTime();
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMins / 60);
+        const diffDays = Math.floor(diffHours / 24);
+
+        if (diffMins < 1) return "Vừa xong";
+        if (diffMins < 60) return `${diffMins} phút trước`;
+        if (diffHours < 24) return `${diffHours} giờ trước`;
+        if (diffDays < 7) return `${diffDays} ngày trước`;
+
+        return d.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "2-digit" });
+    } catch {
+        return "";
+    }
+}
 
 export default function HistoryScreen() {
-    const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+    const navigation = useNavigation<NavProp>();
+    const queryClient = useQueryClient();
     const [filter, setFilter] = useState<FilterType>("ALL");
     const [searchText, setSearchText] = useState("");
     const [activeKeyword, setActiveKeyword] = useState<string | undefined>(undefined);
+
+    // ── Fetch local history ──────────────────────────────────────────────
+    const { data: rawHistory = [], isLoading, refetch } = useQuery<LocalScanRecord[]>({
+        queryKey: ["localScanHistory"],
+        queryFn: () => getLocalHistory(),
+        staleTime: 0, // luôn fresh
+    });
+
+    // ── Refetch khi màn hình được focus (sau khi quét về) ──────────────
+    useFocusEffect(
+        useCallback(() => {
+            refetch();
+        }, [refetch])
+    );
+
+    // ── Search ──────────────────────────────────────────────────────────
+    const { data: searchResults = [], isLoading: searchLoading } = useQuery<LocalScanRecord[]>({
+        queryKey: ["localHistorySearch", activeKeyword],
+        queryFn: () => searchLocalHistory(activeKeyword!),
+        enabled: !!activeKeyword,
+        staleTime: 0,
+    });
 
     const handleSearchChange = useCallback((text: string) => {
         setSearchText(text);
         if (!text.trim()) setActiveKeyword(undefined);
     }, []);
+    const handleSearchSubmit = () => setActiveKeyword(searchText.trim() || undefined);
+    const handleClearSearch = () => { setSearchText(""); setActiveKeyword(undefined); };
 
-    const handleSearchSubmit = () => {
-        setActiveKeyword(searchText.trim() || undefined);
-    };
-
-    const handleClearSearch = () => {
-        setSearchText("");
-        setActiveKeyword(undefined);
-    };
-
-    // Load all history
-    const { data, isLoading, error, refetch } = useQuery({
-        queryKey: queryKeys.history(0),
-        queryFn: () => getScanHistory(0, 200),
-        staleTime: 1000 * 30,
-    });
-
-    // Search by keyword
-    const { data: searchData, isLoading: searchLoading } = useQuery({
-        queryKey: ["historySearch", activeKeyword],
-        queryFn: () => searchHistory(activeKeyword!),
-        enabled: !!activeKeyword,
-        staleTime: 1000 * 30,
-    });
-
+    // ── Derived list ─────────────────────────────────────────────────────
+    const sourceList = activeKeyword ? searchResults : rawHistory;
+    const filtered = filter === "ALL" ? sourceList : sourceList.filter((i) => i.rating === filter);
     const loading = isLoading || searchLoading;
-    const rawList: ScanHistoryItem[] = activeKeyword ? (searchData ?? []) : (data ?? []);
-    const filtered = filter === "ALL" ? rawList : rawList.filter(i => i.snapshotColor === filter);
 
-    if (loading && !data) {
+    // ── Long press: delete item ──────────────────────────────────────────
+    const handleLongPress = (item: LocalScanRecord) => {
+        Alert.alert(
+            "Xóa lịch sử",
+            `Xóa "${item.name ?? item.barcode}" khỏi lịch sử?`,
+            [
+                { text: "Hủy", style: "cancel" },
+                {
+                    text: "Xóa",
+                    style: "destructive",
+                    onPress: async () => {
+                        await removeFromHistory(item.barcode);
+                        queryClient.invalidateQueries({ queryKey: ["localScanHistory"] });
+                    },
+                },
+            ]
+        );
+    };
+
+    // ── Header clear all ─────────────────────────────────────────────────
+    const handleClearAll = () => {
+        if (rawHistory.length === 0) return;
+        Alert.alert("Xóa toàn bộ lịch sử", "Bạn có chắc muốn xóa tất cả lịch sử quét?", [
+            { text: "Hủy", style: "cancel" },
+            {
+                text: "Xóa tất cả",
+                style: "destructive",
+                onPress: async () => {
+                    await clearLocalHistory();
+                    queryClient.invalidateQueries({ queryKey: ["localScanHistory"] });
+                },
+            },
+        ]);
+    };
+
+    // ── Render ───────────────────────────────────────────────────────────
+    if (loading && rawHistory.length === 0) {
         return (
             <View style={styles.center}>
                 <ActivityIndicator color={COLORS.primary} size="large" />
@@ -99,26 +157,21 @@ export default function HistoryScreen() {
         );
     }
 
-    if (error && !data) {
-        return (
-            <View style={styles.center}>
-                <Text style={styles.errorEmoji}>⚠️</Text>
-                <Text style={styles.errorText}>Không thể tải lịch sử</Text>
-                <TouchableOpacity style={styles.retryBtn} onPress={() => refetch()}>
-                    <Text style={styles.retryText}>Thử lại</Text>
-                </TouchableOpacity>
-            </View>
-        );
-    }
-
     return (
         <View style={styles.container}>
-            {/* Header — Frame 3: title + avatar */}
+            {/* Header */}
             <View style={styles.header}>
-                <Text style={styles.title}>Lịch sử</Text>
-                <View style={styles.headerAvatar}>
-                    <Text style={styles.headerAvatarText}>👤</Text>
+                <View>
+                    <Text style={styles.title}>Lịch sử quét</Text>
+                    <Text style={styles.headerCount}>
+                        {rawHistory.length > 0 ? `${rawHistory.length} sản phẩm` : "Chưa có lịch sử"}
+                    </Text>
                 </View>
+                {rawHistory.length > 0 && (
+                    <TouchableOpacity style={styles.clearAllBtn} onPress={handleClearAll}>
+                        <Text style={styles.clearAllText}>Xóa tất cả</Text>
+                    </TouchableOpacity>
+                )}
             </View>
 
             {/* Search bar */}
@@ -127,13 +180,12 @@ export default function HistoryScreen() {
                     <Text style={styles.searchIcon}>🔍</Text>
                     <TextInput
                         style={styles.searchInput}
-                        placeholder="Tìm kiếm sản phẩm"
+                        placeholder="Tìm tên, thương hiệu, barcode..."
                         placeholderTextColor={COLORS.textMuted}
                         value={searchText}
                         onChangeText={handleSearchChange}
                         onSubmitEditing={handleSearchSubmit}
                         returnKeyType="search"
-                        clearButtonMode="while-editing"
                         autoCapitalize="none"
                         autoCorrect={false}
                     />
@@ -148,45 +200,52 @@ export default function HistoryScreen() {
             {/* Filter pills */}
             {!activeKeyword && (
                 <View style={styles.filterBar}>
-                    {FILTERS.map((f) => (
-                        <TouchableOpacity
-                            key={f.value}
-                            style={[styles.filterBtn, filter === f.value && styles.filterBtnActive]}
-                            onPress={() => setFilter(f.value)}
-                        >
-                            <Text style={[styles.filterText, filter === f.value && styles.filterTextActive]}>
-                                {f.emoji ? `${f.emoji} ` : ""}{f.label}
-                            </Text>
-                        </TouchableOpacity>
-                    ))}
+                    {FILTERS.map((f) => {
+                        const count = f.value === "ALL"
+                            ? rawHistory.length
+                            : rawHistory.filter((i) => i.rating === f.value).length;
+                        return (
+                            <TouchableOpacity
+                                key={f.value}
+                                style={[styles.filterBtn, filter === f.value && styles.filterBtnActive]}
+                                onPress={() => setFilter(f.value)}
+                            >
+                                <Text style={[styles.filterText, filter === f.value && styles.filterTextActive]}>
+                                    {f.emoji ? `${f.emoji} ` : ""}{f.label}
+                                    {count > 0 ? ` (${count})` : ""}
+                                </Text>
+                            </TouchableOpacity>
+                        );
+                    })}
                 </View>
             )}
 
             {/* Section title */}
             <Text style={styles.sectionTitle}>
-                {activeKeyword ? `Kết quả cho "${activeKeyword}"` : "Lịch sử gần đây"}
+                {activeKeyword ? `Kết quả cho "${activeKeyword}"` : "Gần đây nhất"}
             </Text>
 
             {/* List */}
             <FlatList
-                data={Array.isArray(filtered) ? filtered : []}
-                keyExtractor={(item, index) => item?.scanId ?? item?.barcode ?? index.toString()}
-                renderItem={({ item }: { item: ScanHistoryItem }) => {
-                    if (!item) return null;
-                    const safetyColor = SAFETY_COLOR[item.snapshotColor] ?? COLORS.textMuted;
+                data={filtered}
+                keyExtractor={(item, index) => item.barcode + "_" + index}
+                renderItem={({ item }: { item: LocalScanRecord }) => {
+                    const safetyColor = SAFETY_COLOR[item.rating] ?? COLORS.textMuted;
+                    const catIcon = CATEGORY_ICON[item.category ?? ""] ?? "📦";
                     return (
                         <TouchableOpacity
                             style={styles.item}
                             onPress={() => navigation.navigate("Result", { barcode: item.barcode })}
-                            activeOpacity={0.7}
+                            onLongPress={() => handleLongPress(item)}
+                            activeOpacity={0.72}
                         >
-                            {/* Product image */}
-                            <View style={styles.imageBox}>
+                            {/* Image / Icon */}
+                            <View style={[styles.imageBox, { borderColor: safetyColor + "33", borderWidth: 1.5 }]}>
                                 {item.imageUrl ? (
                                     <Image source={{ uri: item.imageUrl }} style={styles.image} />
                                 ) : (
                                     <View style={styles.imagePlaceholder}>
-                                        <Text style={{ fontSize: 28 }}>📦</Text>
+                                        <Text style={{ fontSize: 30 }}>{catIcon}</Text>
                                     </View>
                                 )}
                             </View>
@@ -196,17 +255,29 @@ export default function HistoryScreen() {
                                 <Text style={styles.itemName} numberOfLines={1}>
                                     {item.name ?? "Sản phẩm DICO"}
                                 </Text>
-                                <Text style={styles.itemCategory} numberOfLines={1}>
-                                    {item.barcode}
+                                <Text style={styles.itemBrand} numberOfLines={1}>
+                                    {item.brand ? item.brand : item.barcode}
                                 </Text>
-                                {/* Safety badge — Frame 3 style */}
-                                <View style={styles.safetyRow}>
-                                    <Text style={styles.safetyIcon}>{SAFETY_ICON[item.snapshotColor] ?? "❓"}</Text>
-                                    <Text style={[styles.safetyText, { color: safetyColor }]}>
-                                        {SAFETY_LABEL[item.snapshotColor] ?? "Chưa rõ"}
-                                    </Text>
+
+                                {/* Safety badge + time */}
+                                <View style={styles.bottomRow}>
+                                    <View style={[styles.safetyBadge, { backgroundColor: safetyColor + "18" }]}>
+                                        <Text style={styles.safetyIcon}>{SAFETY_ICON[item.rating] ?? "❓"}</Text>
+                                        <Text style={[styles.safetyText, { color: safetyColor }]}>
+                                            {SAFETY_LABEL[item.rating] ?? "Chưa rõ"}
+                                        </Text>
+                                    </View>
+                                    <Text style={styles.timeText}>{formatTime(item.scannedAt)}</Text>
                                 </View>
                             </View>
+
+                            {/* Score pill */}
+                            {item.score !== null && (
+                                <View style={[styles.scorePill, { backgroundColor: safetyColor + "18" }]}>
+                                    <Text style={[styles.scoreNum, { color: safetyColor }]}>{item.score}</Text>
+                                    <Text style={styles.scoreSub}>đ</Text>
+                                </View>
+                            )}
                         </TouchableOpacity>
                     );
                 }}
@@ -220,11 +291,12 @@ export default function HistoryScreen() {
                         <Text style={styles.emptyDesc}>
                             {activeKeyword
                                 ? `Không có sản phẩm phù hợp với "${activeKeyword}"`
-                                : "Quét sản phẩm đầu tiên của bạn!"}
+                                : "Quét sản phẩm đầu tiên để bắt đầu!"}
                         </Text>
                     </View>
                 }
-                contentContainerStyle={filtered.length === 0 ? { flex: 1 } : { paddingBottom: 20 }}
+                contentContainerStyle={filtered.length === 0 ? { flex: 1 } : { paddingBottom: 24 }}
+                showsVerticalScrollIndicator={false}
             />
         </View>
     );
@@ -232,91 +304,69 @@ export default function HistoryScreen() {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: COLORS.background },
-    center: { flex: 1, justifyContent: "center", alignItems: "center", gap: 12, padding: 24 },
-    errorEmoji: { fontSize: 40 },
-    errorText: { color: COLORS.danger, fontSize: 16, fontWeight: "600" },
-    retryBtn: { backgroundColor: COLORS.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 },
-    retryText: { color: COLORS.white, fontWeight: "600", fontSize: 14 },
+    center: { flex: 1, justifyContent: "center", alignItems: "center" },
 
-    // Header — Frame 3: centered title "Lịch sử" + avatar icon
     header: {
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "space-between",
-        paddingHorizontal: 20,
-        paddingTop: 56,
-        paddingBottom: 16,
+        flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between",
+        paddingHorizontal: 20, paddingTop: 56, paddingBottom: 14,
+        backgroundColor: COLORS.white, borderBottomWidth: 1, borderBottomColor: COLORS.border,
     },
     title: { color: COLORS.text, fontSize: 22, fontWeight: "800" },
-    headerAvatar: {
-        width: 38,
-        height: 38,
-        borderRadius: 19,
-        backgroundColor: COLORS.surface,
-        justifyContent: "center",
-        alignItems: "center",
-        borderWidth: 1,
-        borderColor: COLORS.border,
-    },
-    headerAvatarText: { fontSize: 20 },
+    headerCount: { color: COLORS.textMuted, fontSize: 12, marginTop: 2 },
+    clearAllBtn: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 10, backgroundColor: COLORS.dangerLight },
+    clearAllText: { color: COLORS.danger, fontSize: 12, fontWeight: "700" },
 
-    // Search bar — Frame 3 rounded pill, light gray
-    searchContainer: { paddingHorizontal: 16, marginBottom: 12 },
+    searchContainer: { paddingHorizontal: 16, paddingTop: 12, marginBottom: 8 },
     searchBar: {
-        flexDirection: "row",
-        alignItems: "center",
-        backgroundColor: COLORS.surface,
-        borderRadius: 12,
-        paddingHorizontal: 14,
-        paddingVertical: 12,
-        borderWidth: 1,
-        borderColor: COLORS.border,
-        gap: 8,
+        flexDirection: "row", alignItems: "center",
+        backgroundColor: COLORS.surface, borderRadius: 12,
+        paddingHorizontal: 14, paddingVertical: 11,
+        borderWidth: 1, borderColor: COLORS.border, gap: 8,
     },
     searchIcon: { fontSize: 15, opacity: 0.5 },
     searchInput: { flex: 1, color: COLORS.text, fontSize: 14 },
     clearBtn: { color: COLORS.textMuted, fontSize: 15, fontWeight: "600", paddingHorizontal: 4 },
 
-    // Filter pills
     filterBar: { flexDirection: "row", paddingHorizontal: 16, gap: 8, marginBottom: 8, flexWrap: "wrap" },
-    filterBtn: { paddingVertical: 6, paddingHorizontal: 14, borderRadius: 20, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
+    filterBtn: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
     filterBtnActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
     filterText: { color: COLORS.textMuted, fontSize: 12, fontWeight: "500" },
     filterTextActive: { color: COLORS.white, fontWeight: "700" },
 
-    // Section title
-    sectionTitle: { color: COLORS.text, fontSize: 17, fontWeight: "800", paddingHorizontal: 16, marginBottom: 8 },
+    sectionTitle: { color: COLORS.text, fontSize: 15, fontWeight: "700", paddingHorizontal: 16, marginBottom: 4 },
 
-    // Item — Frame 3 style: flat row, image 70px, safety badge colored text
     item: {
-        flexDirection: "row",
-        alignItems: "center",
-        paddingVertical: 14,
-        paddingHorizontal: 16,
-        backgroundColor: COLORS.white,
-        gap: 14,
+        flexDirection: "row", alignItems: "center",
+        paddingVertical: 12, paddingHorizontal: 16,
+        backgroundColor: COLORS.white, gap: 12,
     },
     imageBox: {
-        width: 70,
-        height: 70,
-        borderRadius: 10,
+        width: 68, height: 68, borderRadius: 12,
         backgroundColor: COLORS.surface,
-        justifyContent: "center",
-        alignItems: "center",
+        justifyContent: "center", alignItems: "center",
         overflow: "hidden",
     },
     image: { width: "100%", height: "100%", resizeMode: "cover" },
     imagePlaceholder: { justifyContent: "center", alignItems: "center" },
-    itemContent: { flex: 1 },
-    itemName: { color: COLORS.text, fontSize: 15, fontWeight: "700", marginBottom: 3 },
-    itemCategory: { color: COLORS.textMuted, fontSize: 12, marginBottom: 6 },
-    // Safety badge row — Frame 3 style: icon + colored text
-    safetyRow: { flexDirection: "row", alignItems: "center", gap: 5 },
-    safetyIcon: { fontSize: 14 },
-    safetyText: { fontSize: 13, fontWeight: "600" },
-    separator: { height: 1, backgroundColor: COLORS.border },
 
-    // Empty state
+    itemContent: { flex: 1, gap: 2 },
+    itemName: { color: COLORS.text, fontSize: 14, fontWeight: "700" },
+    itemBrand: { color: COLORS.textMuted, fontSize: 12 },
+    bottomRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 4 },
+    safetyBadge: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
+    safetyIcon: { fontSize: 12 },
+    safetyText: { fontSize: 12, fontWeight: "600" },
+    timeText: { fontSize: 11, color: COLORS.textMuted },
+
+    scorePill: {
+        width: 44, height: 44, borderRadius: 12,
+        alignItems: "center", justifyContent: "center",
+    },
+    scoreNum: { fontSize: 16, fontWeight: "900" },
+    scoreSub: { fontSize: 9, color: COLORS.textMuted, marginTop: -2 },
+
+    separator: { height: 1, backgroundColor: COLORS.border, marginLeft: 16 + 68 + 12 },
+
     emptyState: { flex: 1, justifyContent: "center", alignItems: "center", gap: 10, padding: 40 },
     emptyEmoji: { fontSize: 52 },
     emptyTitle: { color: COLORS.text, fontSize: 17, fontWeight: "700" },

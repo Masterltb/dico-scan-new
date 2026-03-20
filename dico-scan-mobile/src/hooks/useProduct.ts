@@ -7,6 +7,7 @@ import { getProduct } from "@/api/products";
 import { queryKeys } from "@/constants/queryKeys";
 import { usePreferencesStore } from "@/store/userPreferencesStore";
 import { cacheProduct, getCachedProduct } from "@/utils/productCache";
+import { recordScan } from "@/utils/scanHistory";
 import { ProductEvaluationResponse } from "@/api/types";
 
 export const useProduct = (barcode: string, useToken?: boolean, profileId?: string) => {
@@ -22,6 +23,10 @@ export const useProduct = (barcode: string, useToken?: boolean, profileId?: stri
                 // ── Network path ──────────────────────────────────────
                 const product = await getProduct(barcode, allergies, useToken, profileId);
                 
+                // ── Lưu vào local scan history (non-blocking) ────────────
+                // Ghi cả mock lẫn thật — đây là nguồn tin cậy của HistoryScreen
+                recordScan(product).catch(() => { });
+
                 // Cache result for offline use (non-blocking) - only cache default non-token queries
                 if (!useToken && !profileId) {
                     cacheProduct(barcode, product).catch(() => { });

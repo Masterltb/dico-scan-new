@@ -12,6 +12,7 @@ import UpgradeScreen from "@/screens/UpgradeScreen";
 import CompareScreen from "@/screens/CompareScreen";
 import FavoritesScreen from "@/screens/FavoritesScreen";
 import FamilyProfilesScreen from "@/screens/FamilyProfilesScreen";
+import FamilyProfileFormScreen from "@/screens/FamilyProfileFormScreen";
 import WizardWelcomeScreen from "@/screens/wizard/WizardWelcomeScreen";
 import WizardTargetsScreen from "@/screens/wizard/WizardTargetsScreen";
 import WizardChildScreen from "@/screens/wizard/WizardChildScreen";
@@ -48,7 +49,8 @@ export type RootStackParamList = {
     Upgrade: undefined;
     Compare: { barcode1?: string };
     Favorites: undefined;
-    FamilyProfiles: undefined; // New feature route
+    FamilyProfiles: undefined;
+    FamilyProfileForm: { editingProfile?: import("@/api/types").FamilyProfileResponse } | undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -150,6 +152,11 @@ export function RootNavigator() {
                             name="FamilyProfiles"
                             component={FamilyProfilesScreen}
                             options={{ presentation: "modal", animation: "slide_from_bottom" }}
+                        />
+                        <Stack.Screen
+                            name="FamilyProfileForm"
+                            component={FamilyProfileFormScreen}
+                            options={{ animation: "slide_from_right" }}
                         />
                     </>
                 )}

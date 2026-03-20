@@ -11,8 +11,37 @@ import { RootStackParamList } from "@/navigation/RootNavigator";
 import { COLORS } from "@/constants/colors";
 import { useSubscriptionStore } from "@/store/subscriptionStore";
 import { useInterstitialAd } from "@/hooks/useInterstitialAd";
+import { MOCK_BARCODES } from "@/api/mockData";
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
+
+// ── Demo scenarios — 6 kịch bản mô phỏng dị ứng thực tế ─────────────────
+const DEMO_SCENARIOS = [
+    {
+        barcode: MOCK_BARCODES.MILK_SAFE,
+        icon: "🥛", label: "Sữa tươi", sublabel: "✅ An toàn", color: COLORS.success,
+    },
+    {
+        barcode: MOCK_BARCODES.MILK_ALLERGY,
+        icon: "🥛", label: "Sữa đặc", sublabel: "🚨 Dị ứng sữa", color: COLORS.danger,
+    },
+    {
+        barcode: MOCK_BARCODES.SNACK_PEANUT,
+        icon: "🍟", label: "Bánh snack", sublabel: "🚨 Đậu phộng", color: COLORS.danger,
+    },
+    {
+        barcode: MOCK_BARCODES.COSMETIC_PARABEN,
+        icon: "🧴", label: "Kem dưỡng", sublabel: "⚠️ Paraben", color: COLORS.warning,
+    },
+    {
+        barcode: MOCK_BARCODES.BABY_FOOD,
+        icon: "🍼", label: "Bột ăn dặm", sublabel: "⚠️ Lưu ý tuổi", color: COLORS.warning,
+    },
+    {
+        barcode: MOCK_BARCODES.HALAL_VEGAN,
+        icon: "🍏", label: "Nước ép", sublabel: "✅ Halal Vegan", color: COLORS.success,
+    },
+] as const;
 
 export default function ScannerScreen() {
     const navigation = useNavigation<NavProp>();
@@ -20,7 +49,6 @@ export default function ScannerScreen() {
     const [scanned, setScanned] = useState(false);
     const isFocused = useIsFocused();
 
-    // ── Interstitial: 1 lần mỗi 3 lần quét, chỉ với FREE users ─────────────
     const { tier } = useSubscriptionStore();
     const scanCountRef = useRef(0);
     const INTERSTITIAL_EVERY_N_SCANS = 3;
@@ -45,11 +73,9 @@ export default function ScannerScreen() {
         if (scanned) return;
         setScanned(true);
 
-        // Interstitial logic: chỉ FREE, sau mỗi N lần quét
-        if (tier === 'FREE') {
+        if (tier === "FREE") {
             scanCountRef.current += 1;
             if (scanCountRef.current % INTERSTITIAL_EVERY_N_SCANS === 0) {
-                // Hiển thị sau khi navigate để không block UX
                 setTimeout(() => showIfReady(), 600);
             }
         }
@@ -61,21 +87,17 @@ export default function ScannerScreen() {
     const pickImageAndScan = async () => {
         try {
             const result = await ImagePicker.launchImageLibraryAsync({
-                mediaTypes: ['images'],
+                mediaTypes: ["images"],
                 allowsEditing: false,
                 quality: 1,
             });
 
             if (!result.canceled && result.assets && result.assets.length > 0) {
                 const uri = result.assets[0].uri;
-                
                 if (scanned) return;
-
                 const scannedResults = await scanFromURLAsync(uri, ["ean13", "ean8", "qr", "upc_a", "upc_e"]);
-                
                 if (scannedResults && scannedResults.length > 0) {
-                    const firstBarcode = scannedResults[0].data;
-                    handleBarcodeScanned({ type: scannedResults[0].type, data: firstBarcode });
+                    handleBarcodeScanned({ type: scannedResults[0].type, data: scannedResults[0].data });
                 } else {
                     Alert.alert("Lỗi", "Không tìm thấy mã vạch trong hình ảnh này. Hãy đảm bảo ảnh chụp rõ nét.");
                 }
@@ -98,48 +120,69 @@ export default function ScannerScreen() {
                     }}
                 >
                     <View style={styles.overlay}>
-                        {/* Nút Đóng góc trái trên */}
+                        {/* Close */}
                         <TouchableOpacity style={styles.closeBtn} onPress={() => navigation.goBack()}>
                             <Text style={styles.closeText}>✕</Text>
                         </TouchableOpacity>
 
                         <Text style={styles.hintText}>Đưa mã vạch vào vùng camera</Text>
 
-                        {/* Khung quét - Scan Frame */}
+                        {/* Scan Frame */}
                         <View style={styles.scanFrame}>
                             <View style={[styles.corner, styles.cornerTL]} />
                             <View style={[styles.corner, styles.cornerTR]} />
                             <View style={[styles.corner, styles.cornerBL]} />
                             <View style={[styles.corner, styles.cornerBR]} />
                         </View>
-                        
-                        {/* Nút upload từ thư viện ảnh */}
+
+                        {/* Gallery upload */}
                         <TouchableOpacity style={styles.galleryBtn} onPress={pickImageAndScan}>
                             <Text style={styles.galleryIcon}>🖼️</Text>
                             <Text style={styles.galleryText}>Tải ảnh lên</Text>
                         </TouchableOpacity>
 
-                        {/* Nút giả lập (Demo) quét sản phẩm trên máy ảo */}
-                        <Text style={{color: "rgba(255,255,255,0.7)", marginTop: 20, fontSize: 13, fontWeight: "600"}}>GIẢ LẬP NHANH (DEMO)</Text>
-                        <View style={{flexDirection: "row", gap: 8, marginTop: 8}}>
-                            <TouchableOpacity 
-                                style={[styles.galleryBtn, { backgroundColor: COLORS.success, paddingHorizontal: 12 }]} 
-                                onPress={() => handleBarcodeScanned({ type: "ean13", data: "1111111111111" })}
-                            >
-                                <Text style={styles.galleryText}>🟢 Sữa</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity 
-                                style={[styles.galleryBtn, { backgroundColor: COLORS.warning, paddingHorizontal: 12 }]} 
-                                onPress={() => handleBarcodeScanned({ type: "ean13", data: "3333333333333" })}
-                            >
-                                <Text style={styles.galleryText}>🟡 Mỹ phẩm</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity 
-                                style={[styles.galleryBtn, { backgroundColor: COLORS.danger, paddingHorizontal: 12 }]} 
-                                onPress={() => handleBarcodeScanned({ type: "ean13", data: "2222222222222" })}
-                            >
-                                <Text style={styles.galleryText}>🔴 Snack</Text>
-                            </TouchableOpacity>
+                        {/* ── Demo Panel ──────────────────────────────── */}
+                        <View style={styles.demoPanel}>
+                            <View style={styles.demoPanelHeaderRow}>
+                                <View style={styles.demoDivider} />
+                                <Text style={styles.demoPanelTitle}>DEMO — GIẢ LẬP QUÉT</Text>
+                                <View style={styles.demoDivider} />
+                            </View>
+                            <Text style={styles.demoPanelSub}>
+                                Mô phỏng cảnh báo dị ứng theo hồ sơ gia đình
+                            </Text>
+
+                            {/* Row 1 */}
+                            <View style={styles.demoRow}>
+                                {DEMO_SCENARIOS.slice(0, 3).map((s) => (
+                                    <TouchableOpacity
+                                        key={s.barcode}
+                                        style={[styles.demoCard, { borderColor: s.color + "AA" }]}
+                                        onPress={() => handleBarcodeScanned({ type: "mock", data: s.barcode })}
+                                        activeOpacity={0.75}
+                                    >
+                                        <Text style={styles.demoCardIcon}>{s.icon}</Text>
+                                        <Text style={styles.demoCardLabel}>{s.label}</Text>
+                                        <Text style={[styles.demoCardSub, { color: s.color }]}>{s.sublabel}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+
+                            {/* Row 2 */}
+                            <View style={styles.demoRow}>
+                                {DEMO_SCENARIOS.slice(3, 6).map((s) => (
+                                    <TouchableOpacity
+                                        key={s.barcode}
+                                        style={[styles.demoCard, { borderColor: s.color + "AA" }]}
+                                        onPress={() => handleBarcodeScanned({ type: "mock", data: s.barcode })}
+                                        activeOpacity={0.75}
+                                    >
+                                        <Text style={styles.demoCardIcon}>{s.icon}</Text>
+                                        <Text style={styles.demoCardLabel}>{s.label}</Text>
+                                        <Text style={[styles.demoCardSub, { color: s.color }]}>{s.sublabel}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
                         </View>
                     </View>
                 </CameraView>
@@ -155,20 +198,54 @@ const styles = StyleSheet.create({
     btn: { backgroundColor: COLORS.primary, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 10 },
     btnText: { color: COLORS.white, fontSize: 15, fontWeight: "600" },
 
-    overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", alignItems: "center", justifyContent: "center" },
+    overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)", alignItems: "center", justifyContent: "center" },
     closeBtn: { position: "absolute", top: 50, left: 20, width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center" },
     closeText: { color: "white", fontSize: 18, fontWeight: "bold" },
-    
-    hintText: { color: "white", fontSize: 16, marginBottom: 40, fontWeight: "600", backgroundColor: "rgba(0,0,0,0.6)", paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
-    
-    scanFrame: { width: 250, height: 250, backgroundColor: "transparent", position: "relative", marginBottom: 40 },
-    corner: { position: "absolute", width: 40, height: 40, borderColor: COLORS.primary, borderWidth: 4 },
-    cornerTL: { top: 0, left: 0, borderRightWidth: 0, borderBottomWidth: 0, borderTopLeftRadius: 20 },
-    cornerTR: { top: 0, right: 0, borderLeftWidth: 0, borderBottomWidth: 0, borderTopRightRadius: 20 },
-    cornerBL: { bottom: 0, left: 0, borderRightWidth: 0, borderTopWidth: 0, borderBottomLeftRadius: 20 },
-    cornerBR: { bottom: 0, right: 0, borderLeftWidth: 0, borderTopWidth: 0, borderBottomRightRadius: 20 },
-    
-    galleryBtn: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(0,0,0,0.6)", paddingHorizontal: 20, paddingVertical: 12, borderRadius: 25, gap: 8 },
+
+    hintText: { color: "white", fontSize: 16, marginBottom: 32, fontWeight: "600", backgroundColor: "rgba(0,0,0,0.6)", paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
+
+    scanFrame: { width: 240, height: 240, backgroundColor: "transparent", position: "relative", marginBottom: 28 },
+    corner: { position: "absolute", width: 36, height: 36, borderColor: COLORS.primary, borderWidth: 4 },
+    cornerTL: { top: 0, left: 0, borderRightWidth: 0, borderBottomWidth: 0, borderTopLeftRadius: 16 },
+    cornerTR: { top: 0, right: 0, borderLeftWidth: 0, borderBottomWidth: 0, borderTopRightRadius: 16 },
+    cornerBL: { bottom: 0, left: 0, borderRightWidth: 0, borderTopWidth: 0, borderBottomLeftRadius: 16 },
+    cornerBR: { bottom: 0, right: 0, borderLeftWidth: 0, borderTopWidth: 0, borderBottomRightRadius: 16 },
+
+    galleryBtn: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(0,0,0,0.6)", paddingHorizontal: 20, paddingVertical: 12, borderRadius: 25, gap: 8, marginBottom: 20 },
     galleryIcon: { fontSize: 20 },
     galleryText: { color: "white", fontSize: 15, fontWeight: "600" },
+
+    // ── Demo Panel ──────────────────────────────────────────────────────
+    demoPanel: {
+        width: "94%",
+        backgroundColor: "rgba(10,10,20,0.85)",
+        borderRadius: 20,
+        padding: 14,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.12)",
+    },
+    demoPanelHeaderRow: {
+        flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4,
+    },
+    demoDivider: { flex: 1, height: 1, backgroundColor: "rgba(255,255,255,0.2)" },
+    demoPanelTitle: {
+        color: "rgba(255,255,255,0.7)", fontSize: 10, fontWeight: "800",
+        letterSpacing: 1.5, textAlign: "center",
+    },
+    demoPanelSub: {
+        color: "rgba(255,255,255,0.45)", fontSize: 11,
+        textAlign: "center", marginBottom: 12,
+    },
+
+    demoRow: { flexDirection: "row", gap: 8, marginBottom: 8 },
+
+    demoCard: {
+        flex: 1, alignItems: "center",
+        backgroundColor: "rgba(255,255,255,0.07)",
+        borderWidth: 1.5, borderRadius: 14,
+        paddingVertical: 10, paddingHorizontal: 4,
+    },
+    demoCardIcon: { fontSize: 22, marginBottom: 4 },
+    demoCardLabel: { color: "rgba(255,255,255,0.9)", fontSize: 11, fontWeight: "700", textAlign: "center" },
+    demoCardSub: { fontSize: 10, fontWeight: "600", textAlign: "center", marginTop: 2 },
 });

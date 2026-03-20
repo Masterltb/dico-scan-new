@@ -1,20 +1,20 @@
 // src/screens/FamilyProfilesScreen.tsx
 // Hồ sơ gia đình - Premium GOLD only
-// Form siêu cuộn dài: câu hỏi rẽ nhánh đầy đủ từng thành viên
+// Layout: Profile Switcher (card ngang) + Detail panel bên dưới
 
 import React, { useEffect, useState } from "react";
 import {
-    View, Text, StyleSheet, TouchableOpacity, FlatList,
-    ActivityIndicator, Alert, TextInput, Modal, ScrollView, KeyboardAvoidingView, Platform
+    View, Text, StyleSheet, TouchableOpacity,
+    ActivityIndicator, Alert, ScrollView, Platform, StatusBar
 } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { RootStackParamList } from "@/navigation/RootNavigator";
 import { useFamilyProfileStore } from "@/store/familyProfileStore";
 import {
-    CreateFamilyProfileRequest, FamilyProfileResponse, SafetyProfileRequest,
+    FamilyProfileResponse,
     FOOD_ALLERGY_OPTIONS, DIETARY_PREF_OPTIONS, TARGET_OPTIONS,
     CHILD_AGE_OPTIONS, SKIN_TYPE_OPTIONS, HEALTH_CONDITION_OPTIONS,
-    COSMETIC_SENSITIVITY_OPTIONS, ALERT_LEVEL_OPTIONS, SEVERITY_OPTIONS, TRIMESTER_OPTIONS
+    COSMETIC_SENSITIVITY_OPTIONS, ALERT_LEVEL_OPTIONS, TRIMESTER_OPTIONS
 } from "@/api/types";
 import { COLORS } from "@/constants/colors";
 import { useQuery } from "@tanstack/react-query";
@@ -22,92 +22,161 @@ import { getPreferences } from "@/api/users";
 
 type Props = NativeStackScreenProps<RootStackParamList, "FamilyProfiles">;
 
-// Helper: look up label from options array
+// ─── Helpers ───────────────────────────────────────────────────────────────
 const getLabel = (options: readonly { label: string; value: string }[], value: string): string =>
     options.find((o) => o.value === value)?.label ?? value;
 
-// Empty safety profile state
-const emptyProfile = (): Partial<SafetyProfileRequest> => ({
-    targets: [],
-    foodAllergies: [],
-    customFoodAllergies: [],
-    cosmeticSensitivities: [],
-    customCosmeticSensitivities: [],
-    skinType: null,
-    healthConditions: [],
-    dietaryPreferences: [],
-    alertLevel: null,
-    allergySeverity: null,
-    childProfile: null,
-    pregnancyProfile: null,
-});
+const MAX_PROFILES = 3;
 
+const RELATIONSHIP_MAP: Record<string, { label: string; emoji: string }> = {
+    CON_CAI: { label: "Con cái", emoji: "👶" },
+    VO_CHONG: { label: "Vợ/Chồng", emoji: "💑" },
+    BO_ME: { label: "Bố/Mẹ", emoji: "👴" },
+    SELF: { label: "Bản thân", emoji: "🧑" },
+};
+
+const PROFILE_AVATARS = ["🧑", "👶", "💑", "👴", "🌟", "🎯"];
+
+// ─── Profile Switcher Card ─────────────────────────────────────────────────
+function ProfileCard({
+    profile,
+    index,
+    isSelected,
+    onPress,
+}: {
+    profile: FamilyProfileResponse;
+    index: number;
+    isSelected: boolean;
+    onPress: () => void;
+}) {
+    const rel = RELATIONSHIP_MAP[profile.relationship] ?? { label: profile.relationship, emoji: "🧑" };
+    const avatar = PROFILE_AVATARS[index % PROFILE_AVATARS.length];
+    const targets = profile.safetyProfile?.targets ?? [];
+    const focusLabel = targets.length > 0
+        ? getLabel(TARGET_OPTIONS, targets[0]).replace(/^[^\s]+ /, "").toUpperCase()
+        : "CHUNG";
+
+    return (
+        <TouchableOpacity
+            style={[styles.profileCard, isSelected && styles.profileCardActive]}
+            onPress={onPress}
+            activeOpacity={0.75}
+        >
+            {isSelected && <View style={styles.profileCardGlow} />}
+            <View style={[styles.avatarCircle, isSelected && styles.avatarCircleActive]}>
+                <Text style={styles.avatarEmoji}>{avatar}</Text>
+                {isSelected && <View style={styles.activeCheckDot}><Text style={styles.activeCheckText}>✓</Text></View>}
+            </View>
+            <Text style={[styles.profileCardName, isSelected && styles.profileCardNameActive]} numberOfLines={1}>
+                {profile.name}
+            </Text>
+            <Text style={[styles.profileCardSub, isSelected && styles.profileCardSubActive]}>
+                {rel.emoji} {rel.label}
+            </Text>
+            {targets.length > 0 && (
+                <View style={[styles.focusBadge, isSelected && styles.focusBadgeActive]}>
+                    <Text style={[styles.focusBadgeText, isSelected && styles.focusBadgeTextActive]}>
+                        {focusLabel}
+                    </Text>
+                </View>
+            )}
+        </TouchableOpacity>
+    );
+}
+
+// ─── Empty Slot Card ───────────────────────────────────────────────────────
+function EmptySlot({ onPress }: { onPress: () => void }) {
+    return (
+        <TouchableOpacity style={styles.emptySlot} onPress={onPress} activeOpacity={0.7}>
+            <Text style={styles.emptySlotPlus}>＋</Text>
+            <Text style={styles.emptySlotLabel}>Trống</Text>
+        </TouchableOpacity>
+    );
+}
+
+// ─── Detail Section Row ────────────────────────────────────────────────────
+function DetailRow({ icon, title, children }: { icon: string; title: string; children: React.ReactNode }) {
+    return (
+        <View style={styles.detailRow}>
+            <Text style={styles.detailRowTitle}>{icon} {title}</Text>
+            <View style={styles.detailRowContent}>{children}</View>
+        </View>
+    );
+}
+
+function TagChip({ label, color }: { label: string; color?: string }) {
+    return (
+        <View style={[styles.chip, { backgroundColor: color ?? COLORS.primaryLight }]}>
+            <Text style={[styles.chipText, { color: color ? "#fff" : COLORS.primary }]}>{label}</Text>
+        </View>
+    );
+}
+
+function EmptyDetail({ text }: { text: string }) {
+    return <Text style={styles.detailEmpty}>{text}</Text>;
+}
+
+// ─── Main Screen ───────────────────────────────────────────────────────────
 export default function FamilyProfilesScreen({ navigation }: Props) {
     const {
         profiles, isLoading: isStoreLoading,
-        fetchProfiles, addProfile, editProfile, removeProfile
+        fetchProfiles, removeProfile
     } = useFamilyProfileStore();
 
     const { data: userPrefs } = useQuery({ queryKey: ["userPreferences"], queryFn: getPreferences });
     const tier = userPrefs?.subscriptionTier;
     const isGold = tier === "PREMIUM_GOLD";
 
-    const [isModalVisible, setModalVisible] = useState(false);
-    const [editingId, setEditingId] = useState<string | null>(null);
-    const [name, setName] = useState("");
-    const [relationship, setRelationship] = useState("CON_CAI");
-    const [sp, setSp] = useState<Partial<SafetyProfileRequest>>(emptyProfile());
-    const [customFoodInput, setCustomFoodInput] = useState("");
-    const [customCosmeticInput, setCustomCosmeticInput] = useState("");
+    const [selectedId, setSelectedId] = useState<string | null>(null);
 
     useEffect(() => {
         if (isGold) { fetchProfiles().catch(() => {}); }
     }, [isGold]);
 
-    const updateSp = (patch: Partial<SafetyProfileRequest>) => setSp(prev => ({ ...prev, ...patch }));
+    // Auto-select first profile when profiles load
+    useEffect(() => {
+        if (profiles.length > 0 && !selectedId) {
+            setSelectedId(profiles[0].id);
+        }
+        // Clear selection if selected profile was deleted
+        if (selectedId && !profiles.find(p => p.id === selectedId)) {
+            setSelectedId(profiles[0]?.id ?? null);
+        }
+    }, [profiles]);
 
-    const toggleArr = (arr: string[], val: string): string[] =>
-        arr.includes(val) ? arr.filter(a => a !== val) : [...arr, val];
+    const isAtLimit = profiles.length >= MAX_PROFILES;
 
     const openAdd = () => {
-        setEditingId(null); setName(""); setRelationship("CON_CAI");
-        setSp(emptyProfile()); setCustomFoodInput(""); setCustomCosmeticInput("");
-        setModalVisible(true);
+        if (isAtLimit) {
+            Alert.alert(
+                "Đã đủ hồ sơ",
+                `Bạn chỉ có thể tạo tối đa ${MAX_PROFILES} hồ sơ gia đình. Hãy xóa một hồ sơ để thêm mới.`,
+                [{ text: "Đã hiểu", style: "cancel" }]
+            );
+            return;
+        }
+        navigation.navigate("FamilyProfileForm");
     };
 
     const openEdit = (item: FamilyProfileResponse) => {
-        setEditingId(item.id); setName(item.name); setRelationship(item.relationship);
-        setSp({ ...emptyProfile(), ...item.safetyProfile });
-        setCustomFoodInput((item.safetyProfile?.customFoodAllergies || []).join(", "));
-        setCustomCosmeticInput((item.safetyProfile?.customCosmeticSensitivities || []).join(", "));
-        setModalVisible(true);
+        navigation.navigate("FamilyProfileForm", { editingProfile: item });
     };
 
-    const handleSave = async () => {
-        if (!name.trim()) { Alert.alert("Lỗi", "Vui lòng nhập tên"); return; }
-        const finalSp: Partial<SafetyProfileRequest> = {
-            ...sp,
-            customFoodAllergies: customFoodInput.split(",").map(s => s.trim()).filter(Boolean),
-            customCosmeticSensitivities: customCosmeticInput.split(",").map(s => s.trim()).filter(Boolean),
-        };
-        const payload: CreateFamilyProfileRequest = { name: name.trim(), relationship, safetyProfile: finalSp };
-        try {
-            if (editingId) await editProfile(editingId, payload);
-            else await addProfile(payload);
-            setModalVisible(false);
-        } catch (err: any) {
-            Alert.alert("Lỗi", err?.message || "Không thể lưu hồ sơ");
-        }
-    };
-
-    const confirmDelete = (id: string, n: string) => {
-        Alert.alert("Xóa hồ sơ", `Bạn có chắc muốn xóa hồ sơ của ${n}?`, [
+    const confirmDelete = (id: string, name: string) => {
+        Alert.alert("Xóa hồ sơ", `Bạn có chắc muốn xóa hồ sơ của ${name}?`, [
             { text: "Hủy", style: "cancel" },
-            { text: "Xóa", style: "destructive", onPress: () => removeProfile(id).catch(() => Alert.alert("Lỗi", "Không thể xóa")) }
+            {
+                text: "Xóa", style: "destructive",
+                onPress: () => removeProfile(id).catch(() => Alert.alert("Lỗi", "Không thể xóa"))
+            }
         ]);
     };
 
-    // === NOT GOLD: Gate ===
+    // Selected profile data
+    const selectedProfile = profiles.find(p => p.id === selectedId) ?? null;
+    const sp = selectedProfile?.safetyProfile ?? {};
+
+    // ── Gate: not gold ───────────────────────────────────────────────────
     if (!isGold) {
         return (
             <View style={styles.gate}>
@@ -121,251 +190,245 @@ export default function FamilyProfilesScreen({ navigation }: Props) {
         );
     }
 
+    // ── Loading ───────────────────────────────────────────────────────────
+    if (isStoreLoading && profiles.length === 0) {
+        return (
+            <View style={styles.gate}>
+                <ActivityIndicator size="large" color={COLORS.primary} />
+                <Text style={[styles.gateSub, { marginTop: 12 }]}>Đang tải hồ sơ...</Text>
+            </View>
+        );
+    }
+
+    // ── Render slots: profiles + empty slots up to MAX ───────────────────
+    const emptySlots = Math.max(0, MAX_PROFILES - profiles.length);
+
     return (
         <View style={styles.container}>
-            {/* Header */}
+            <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
+
+            {/* ── Header ── */}
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-                    <Text style={styles.backBtnText}>← Quay lại</Text>
+                    <Text style={styles.backIcon}>‹</Text>
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>Hồ sơ gia đình</Text>
-                <TouchableOpacity onPress={openAdd}>
-                    <Text style={[styles.addText, profiles.length >= 3 && styles.addTextDisabled]}>Thêm</Text>
+                <Text style={styles.headerTitle}>Hồ sơ cá nhân</Text>
+                <TouchableOpacity style={styles.bellBtn}>
+                    <Text style={styles.bellIcon}>🔔</Text>
                 </TouchableOpacity>
             </View>
 
-            {/* Profile List */}
-            {isStoreLoading ? (
-                <View style={styles.center}><ActivityIndicator size="large" color={COLORS.primary} /></View>
-            ) : profiles.length === 0 ? (
-                <View style={styles.center}>
-                    <Text style={styles.emptyText}>Bạn chưa có hồ sơ nào.</Text>
-                    <TouchableOpacity style={styles.actionBtn} onPress={openAdd}>
-                        <Text style={styles.actionBtnText}>+ Thêm hồ sơ đầu tiên</Text>
-                    </TouchableOpacity>
-                </View>
-            ) : (
-                <FlatList
-                    data={profiles}
-                    keyExtractor={(item) => item.id}
-                    contentContainerStyle={{ padding: 20, gap: 16 }}
-                    renderItem={({ item }) => {
-                        const sp = item.safetyProfile || {};
-                        const allergyLabels = (sp.foodAllergies || []).map(a => getLabel(FOOD_ALLERGY_OPTIONS, a));
-                        const dietLabels = (sp.dietaryPreferences || []).map(d => getLabel(DIETARY_PREF_OPTIONS, d));
-                        const targetLabels = (sp.targets || []).map(t => getLabel(TARGET_OPTIONS, t));
-                        const skinLabel = sp.skinType ? getLabel(SKIN_TYPE_OPTIONS, sp.skinType) : null;
-                        return (
-                            <View style={styles.profileCard}>
-                                <View style={styles.profileTop}>
-                                    <View>
-                                        <Text style={styles.profileName}>{item.name}</Text>
-                                        <Text style={styles.profileRel}>
-                                            {item.relationship === "CON_CAI" ? "Con cái" : item.relationship === "VO_CHONG" ? "Vợ/Chồng" : "Bố/Mẹ"}
-                                        </Text>
-                                    </View>
-                                    <View style={styles.actions}>
-                                        <TouchableOpacity onPress={() => openEdit(item)}><Text style={styles.editIcon}>✏️</Text></TouchableOpacity>
-                                        <TouchableOpacity onPress={() => confirmDelete(item.id, item.name)}><Text style={styles.deleteIcon}>🗑️</Text></TouchableOpacity>
-                                    </View>
-                                </View>
-                                <View style={styles.tagRow}>
-                                    {targetLabels.map((t, i) => <View key={i} style={[styles.tag, styles.tagBlue]}><Text style={styles.tagText}>{t}</Text></View>)}
-                                    {skinLabel && <View style={[styles.tag, styles.tagGreen]}><Text style={styles.tagText}>{skinLabel}</Text></View>}
-                                    {allergyLabels.map((a, i) => <View key={i} style={[styles.tag, styles.tagRed]}><Text style={styles.tagText}>{a}</Text></View>)}
-                                    {dietLabels.map((d, i) => <View key={i} style={[styles.tag, styles.tagPurple]}><Text style={styles.tagText}>{d}</Text></View>)}
-                                </View>
-                            </View>
-                        );
-                    }}
-                />
-            )}
-
-            {/* Full-form Modal */}
-            <Modal visible={isModalVisible} animationType="slide" transparent>
-                <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalBg}>
-                    <View style={styles.modalContent}>
-                        <Text style={styles.modalTitle}>{editingId ? "Sửa hồ sơ" : "Thêm hồ sơ"}</Text>
-
-                        <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }}>
-
-                            {/* ── Tên & Quan hệ ── */}
-                            <SectionTitle title="👤 Thông tin cơ bản" />
-                            <Text style={styles.label}>Tên / Biệt danh</Text>
-                            <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Vd: Bé Tom" placeholderTextColor={COLORS.textMuted} />
-                            <Text style={styles.label}>Mối quan hệ</Text>
-                            <View style={styles.chipRow}>
-                                {[{ v: "CON_CAI", l: "👶 Con cái" }, { v: "VO_CHONG", l: "💑 Vợ/Chồng" }, { v: "BO_ME", l: "👴 Bố/Mẹ" }].map(rel => (
-                                    <TouchableOpacity key={rel.v} style={[styles.chip, relationship === rel.v && styles.chipActive]} onPress={() => setRelationship(rel.v)}>
-                                        <Text style={[styles.chipText, relationship === rel.v && styles.chipActiveText]}>{rel.l}</Text>
-                                    </TouchableOpacity>
-                                ))}
-                            </View>
-
-                            {/* ── Đối tượng áp dụng ── */}
-                            <SectionTitle title="🎯 Đối tượng áp dụng" />
-                            <View style={styles.chipRow}>
-                                {TARGET_OPTIONS.map(opt => {
-                                    const active = (sp.targets || []).includes(opt.value);
-                                    return (
-                                        <TouchableOpacity key={opt.value} style={[styles.chip, active && styles.chipActive]}
-                                            onPress={() => updateSp({ targets: toggleArr(sp.targets || [], opt.value) })}>
-                                            <Text style={[styles.chipText, active && styles.chipActiveText]}>{opt.label}</Text>
-                                        </TouchableOpacity>
-                                    );
-                                })}
-                            </View>
-
-                            {/* ── Trẻ em ── (conditional) */}
-                            {(sp.targets || []).includes("CHILD") && (
-                                <>
-                                    <SectionTitle title="👶 Thông tin trẻ em" />
-                                    <Text style={styles.label}>Nhóm tuổi</Text>
-                                    <View style={styles.chipRow}>
-                                        {CHILD_AGE_OPTIONS.map(opt => {
-                                            const active = sp.childProfile?.ageGroup === opt.value;
-                                            return (
-                                                <TouchableOpacity key={opt.value} style={[styles.chip, active && styles.chipActive]}
-                                                    onPress={() => updateSp({ childProfile: { ...(sp.childProfile || { allergies: [], customAllergies: [], severityLevel: null }), ageGroup: opt.value } })}>
-                                                    <Text style={[styles.chipText, active && styles.chipActiveText]}>{opt.label}</Text>
-                                                </TouchableOpacity>
-                                            );
-                                        })}
-                                    </View>
-                                </>
-                            )}
-
-                            {/* ── Thai kỳ ── (conditional) */}
-                            {(sp.targets || []).includes("PREGNANT") && (
-                                <>
-                                    <SectionTitle title="🤰 Thai kỳ" />
-                                    <Text style={styles.label}>Giai đoạn</Text>
-                                    <View style={styles.chipRow}>
-                                        {TRIMESTER_OPTIONS.map(opt => {
-                                            const active = sp.pregnancyProfile?.trimester === opt.value;
-                                            return (
-                                                <TouchableOpacity key={opt.value} style={[styles.chip, active && styles.chipActive]}
-                                                    onPress={() => updateSp({ pregnancyProfile: { ...(sp.pregnancyProfile || { alertLevel: null }), trimester: opt.value } })}>
-                                                    <Text style={[styles.chipText, active && styles.chipActiveText]}>{opt.label}</Text>
-                                                </TouchableOpacity>
-                                            );
-                                        })}
-                                    </View>
-                                </>
-                            )}
-
-                            {/* ── Dị ứng thực phẩm ── */}
-                            <SectionTitle title="⚠️ Dị ứng thực phẩm" />
-                            <View style={styles.chipRow}>
-                                {FOOD_ALLERGY_OPTIONS.map(opt => {
-                                    const active = (sp.foodAllergies || []).includes(opt.value);
-                                    return (
-                                        <TouchableOpacity key={opt.value} style={[styles.chip, active && styles.chipDanger]}
-                                            onPress={() => updateSp({ foodAllergies: toggleArr(sp.foodAllergies || [], opt.value) })}>
-                                            <Text style={[styles.chipText, active && styles.chipActiveText]}>{opt.label}</Text>
-                                        </TouchableOpacity>
-                                    );
-                                })}
-                            </View>
-                            <TextInput style={[styles.input, { marginTop: 12 }]} value={customFoodInput} onChangeText={setCustomFoodInput} placeholder="Dị ứng khác (cách nhau bằng dấu phẩy)" placeholderTextColor={COLORS.textMuted} />
-
-                            {/* ── Loại da ── */}
-                            <SectionTitle title="🧴 Loại da" />
-                            <View style={styles.chipRow}>
-                                {SKIN_TYPE_OPTIONS.map(opt => {
-                                    const active = sp.skinType === opt.value;
-                                    return (
-                                        <TouchableOpacity key={opt.value} style={[styles.chip, active && styles.chipActive]}
-                                            onPress={() => updateSp({ skinType: active ? null : opt.value })}>
-                                            <Text style={[styles.chipText, active && styles.chipActiveText]}>{opt.label}</Text>
-                                        </TouchableOpacity>
-                                    );
-                                })}
-                            </View>
-
-                            {/* ── Mỹ phẩm ── */}
-                            <SectionTitle title="💄 Nhạy cảm mỹ phẩm" />
-                            <View style={styles.chipRow}>
-                                {COSMETIC_SENSITIVITY_OPTIONS.map(opt => {
-                                    const active = (sp.cosmeticSensitivities || []).includes(opt.value);
-                                    return (
-                                        <TouchableOpacity key={opt.value} style={[styles.chip, active && styles.chipDanger]}
-                                            onPress={() => updateSp({ cosmeticSensitivities: toggleArr(sp.cosmeticSensitivities || [], opt.value) })}>
-                                            <Text style={[styles.chipText, active && styles.chipActiveText]}>{opt.label}</Text>
-                                        </TouchableOpacity>
-                                    );
-                                })}
-                            </View>
-                            <TextInput style={[styles.input, { marginTop: 12 }]} value={customCosmeticInput} onChangeText={setCustomCosmeticInput} placeholder="Thành phần khác cần tránh" placeholderTextColor={COLORS.textMuted} />
-
-                            {/* ── Bệnh lý ── */}
-                            <SectionTitle title="🏥 Tình trạng sức khỏe" />
-                            <View style={styles.chipRow}>
-                                {HEALTH_CONDITION_OPTIONS.map(opt => {
-                                    const active = (sp.healthConditions || []).includes(opt.value);
-                                    return (
-                                        <TouchableOpacity key={opt.value} style={[styles.chip, active && styles.chipActive]}
-                                            onPress={() => updateSp({ healthConditions: toggleArr(sp.healthConditions || [], opt.value) })}>
-                                            <Text style={[styles.chipText, active && styles.chipActiveText]}>{opt.label}</Text>
-                                        </TouchableOpacity>
-                                    );
-                                })}
-                            </View>
-
-                            {/* ── Chế độ ăn ── */}
-                            <SectionTitle title="🥗 Chế độ ăn" />
-                            <View style={styles.chipRow}>
-                                {DIETARY_PREF_OPTIONS.map(opt => {
-                                    const active = (sp.dietaryPreferences || []).includes(opt.value);
-                                    return (
-                                        <TouchableOpacity key={opt.value} style={[styles.chip, active && styles.chipActive]}
-                                            onPress={() => updateSp({ dietaryPreferences: toggleArr(sp.dietaryPreferences || [], opt.value) })}>
-                                            <Text style={[styles.chipText, active && styles.chipActiveText]}>{opt.label}</Text>
-                                        </TouchableOpacity>
-                                    );
-                                })}
-                            </View>
-
-                            {/* ── Cấu hình cảnh báo ── */}
-                            <SectionTitle title="🔔 Mức độ cảnh báo" />
-                            <View style={styles.chipRow}>
-                                {ALERT_LEVEL_OPTIONS.map(opt => {
-                                    const active = sp.alertLevel === opt.value;
-                                    return (
-                                        <TouchableOpacity key={opt.value} style={[styles.chip, active && styles.chipActive]}
-                                            onPress={() => updateSp({ alertLevel: active ? null : opt.value })}>
-                                            <Text style={[styles.chipText, active && styles.chipActiveText]}>{opt.label}</Text>
-                                        </TouchableOpacity>
-                                    );
-                                })}
-                            </View>
-
-                        </ScrollView>
-
-                        {/* Footer Buttons */}
-                        <View style={styles.modalActions}>
-                            <TouchableOpacity style={styles.modalCancel} onPress={() => setModalVisible(false)}>
-                                <Text style={styles.modalCancelText}>Hủy</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity style={styles.modalSave} onPress={handleSave}>
-                                <Text style={styles.modalSaveText}>💾 Lưu hồ sơ</Text>
-                            </TouchableOpacity>
+            <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.scroll}
+                stickyHeaderIndices={[0]}
+            >
+                {/* ── Profile Switcher Section (sticky) ── */}
+                <View style={styles.switcherSection}>
+                    <View style={styles.switcherHeader}>
+                        <Text style={styles.switcherTitle}>Danh sách hồ sơ</Text>
+                        <View style={styles.goldBadge}>
+                            <Text style={styles.goldBadgeText}>✨ Premium Gold</Text>
                         </View>
                     </View>
-                </KeyboardAvoidingView>
-            </Modal>
+
+                    {/* Profile cards row */}
+                    <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.cardsRow}
+                    >
+                        {profiles.map((p, i) => (
+                            <ProfileCard
+                                key={p.id}
+                                profile={p}
+                                index={i}
+                                isSelected={p.id === selectedId}
+                                onPress={() => setSelectedId(p.id)}
+                            />
+                        ))}
+                        {Array.from({ length: emptySlots }).map((_, i) => (
+                            <EmptySlot key={`empty-${i}`} onPress={openAdd} />
+                        ))}
+                    </ScrollView>
+
+                    {/* Add / Manage button */}
+                    <TouchableOpacity
+                        style={[styles.addBanner, isAtLimit && styles.addBannerFull]}
+                        onPress={openAdd}
+                        activeOpacity={0.8}
+                    >
+                        <View style={styles.addBannerLeft}>
+                            <View style={styles.addBannerIcon}>
+                                <Text style={styles.addBannerIconText}>
+                                    {isAtLimit ? "👪" : "🧑‍🤝‍🧑"}
+                                </Text>
+                            </View>
+                            <View>
+                                <Text style={styles.addBannerTitle}>
+                                    {isAtLimit ? "Quản lý hồ sơ" : "Thêm hồ sơ mới"}
+                                </Text>
+                                <Text style={styles.addBannerSub}>
+                                    {isAtLimit
+                                        ? `Đã đủ ${MAX_PROFILES}/${MAX_PROFILES} hồ sơ`
+                                        : `Quản lý tối đa ${MAX_PROFILES} hồ sơ gia đình`}
+                                </Text>
+                            </View>
+                        </View>
+                        <Text style={styles.addBannerArrow}>›</Text>
+                    </TouchableOpacity>
+                </View>
+
+                {/* ── Detail Panel ── */}
+                {selectedProfile ? (
+                    <View style={styles.detailSection}>
+                        {/* Detail header */}
+                        <View style={styles.detailHeader}>
+                            <Text style={styles.detailHeaderLabel}>
+                                Cài đặt chi tiết:{" "}
+                                <Text style={styles.detailHeaderName}>{selectedProfile.name}</Text>
+                            </Text>
+                            <View style={styles.detailActions}>
+                                <TouchableOpacity
+                                    style={styles.editBtn}
+                                    onPress={() => openEdit(selectedProfile)}
+                                >
+                                    <Text style={styles.editBtnText}>✏️ Sửa</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={styles.deleteBtn}
+                                    onPress={() => confirmDelete(selectedProfile.id, selectedProfile.name)}
+                                >
+                                    <Text style={styles.deleteBtnText}>🗑️</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+
+                        {/* Targets */}
+                        <DetailRow icon="🎯" title="Đối tượng áp dụng">
+                            {(sp.targets ?? []).length > 0 ? (
+                                <View style={styles.chipRow}>
+                                    {(sp.targets ?? []).map((t, i) => (
+                                        <TagChip key={i} label={getLabel(TARGET_OPTIONS, t)} />
+                                    ))}
+                                </View>
+                            ) : <EmptyDetail text="Chưa thiết lập" />}
+                        </DetailRow>
+
+                        {/* Child profile */}
+                        {sp.childProfile && (
+                            <DetailRow icon="👶" title="Hồ sơ Trẻ em">
+                                <View style={styles.chipRow}>
+                                    {sp.childProfile.ageGroup && (
+                                        <TagChip
+                                            label={`Nhóm tuổi: ${getLabel(CHILD_AGE_OPTIONS, sp.childProfile.ageGroup)}`}
+                                            color={COLORS.primary}
+                                        />
+                                    )}
+                                    {(sp.childProfile.allergies ?? []).map((a, i) => (
+                                        <TagChip key={i} label={getLabel(FOOD_ALLERGY_OPTIONS, a)} color={COLORS.danger} />
+                                    ))}
+                                </View>
+                            </DetailRow>
+                        )}
+
+                        {/* Pregnancy profile */}
+                        {sp.pregnancyProfile?.trimester && (
+                            <DetailRow icon="🤰" title="Thai kỳ">
+                                <View style={styles.chipRow}>
+                                    <TagChip label={getLabel(TRIMESTER_OPTIONS, sp.pregnancyProfile.trimester)} color="#E879F9" />
+                                </View>
+                            </DetailRow>
+                        )}
+
+                        {/* Food allergies */}
+                        <DetailRow icon="⚠️" title="Dị ứng thực phẩm">
+                            {(sp.foodAllergies ?? []).length > 0 || (sp.customFoodAllergies ?? []).length > 0 ? (
+                                <View style={styles.chipRow}>
+                                    {(sp.foodAllergies ?? []).map((a, i) => (
+                                        <TagChip key={i} label={getLabel(FOOD_ALLERGY_OPTIONS, a)} color={COLORS.danger} />
+                                    ))}
+                                    {(sp.customFoodAllergies ?? []).map((a, i) => (
+                                        <TagChip key={`c${i}`} label={a} color={COLORS.warning} />
+                                    ))}
+                                </View>
+                            ) : <EmptyDetail text="Không có dị ứng" />}
+                        </DetailRow>
+
+                        {/* Cosmetic sensitivities */}
+                        <DetailRow icon="💄" title="Nhạy cảm mỹ phẩm">
+                            {(sp.cosmeticSensitivities ?? []).length > 0 ? (
+                                <View style={styles.chipRow}>
+                                    {(sp.cosmeticSensitivities ?? []).map((c, i) => (
+                                        <TagChip key={i} label={getLabel(COSMETIC_SENSITIVITY_OPTIONS, c)} color="#A855F7" />
+                                    ))}
+                                </View>
+                            ) : <EmptyDetail text="Không có" />}
+                        </DetailRow>
+
+                        {/* Skin type */}
+                        {sp.skinType && (
+                            <DetailRow icon="🧴" title="Loại da">
+                                <View style={styles.chipRow}>
+                                    <TagChip label={getLabel(SKIN_TYPE_OPTIONS, sp.skinType)} color="#0EA5E9" />
+                                </View>
+                            </DetailRow>
+                        )}
+
+                        {/* Health conditions */}
+                        <DetailRow icon="🏥" title="Tình trạng sức khỏe">
+                            {(sp.healthConditions ?? []).length > 0 ? (
+                                <View style={styles.chipRow}>
+                                    {(sp.healthConditions ?? []).map((h, i) => (
+                                        <TagChip key={i} label={getLabel(HEALTH_CONDITION_OPTIONS, h)} color="#F97316" />
+                                    ))}
+                                </View>
+                            ) : <EmptyDetail text="Không có vấn đề" />}
+                        </DetailRow>
+
+                        {/* Diet preferences */}
+                        <DetailRow icon="🥗" title="Chế độ ăn">
+                            {(sp.dietaryPreferences ?? []).length > 0 ? (
+                                <View style={styles.chipRow}>
+                                    {(sp.dietaryPreferences ?? []).map((d, i) => (
+                                        <TagChip key={i} label={getLabel(DIETARY_PREF_OPTIONS, d)} color={COLORS.success} />
+                                    ))}
+                                </View>
+                            ) : <EmptyDetail text="Không giới hạn" />}
+                        </DetailRow>
+
+                        {/* Alert level */}
+                        {sp.alertLevel && (
+                            <DetailRow icon="🔔" title="Mức cảnh báo">
+                                <View style={styles.chipRow}>
+                                    <TagChip label={getLabel(ALERT_LEVEL_OPTIONS, sp.alertLevel)} color={COLORS.warning} />
+                                </View>
+                            </DetailRow>
+                        )}
+
+                        <View style={styles.bottomPad} />
+                    </View>
+                ) : (
+                    /* Empty state */
+                    <View style={styles.emptyState}>
+                        <Text style={styles.emptyStateIcon}>🧑‍👩‍👧</Text>
+                        <Text style={styles.emptyStateTitle}>Chưa có hồ sơ nào</Text>
+                        <Text style={styles.emptyStateSub}>Thêm hồ sơ đầu tiên để quản lý sức khỏe gia đình bạn.</Text>
+                        <TouchableOpacity style={styles.emptyStateBtn} onPress={openAdd}>
+                            <Text style={styles.emptyStateBtnText}>+ Thêm hồ sơ đầu tiên</Text>
+                        </TouchableOpacity>
+                    </View>
+                )}
+            </ScrollView>
         </View>
     );
 }
 
-function SectionTitle({ title }: { title: string }) {
-    return <Text style={styles.sectionTitle}>{title}</Text>;
-}
-
+// ─── Styles ───────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: COLORS.background },
+    container: { flex: 1, backgroundColor: COLORS.backgroundAlt },
 
-    // Gate
+    // ── Gate ──
     gate: { flex: 1, justifyContent: "center", alignItems: "center", padding: 32, backgroundColor: COLORS.background },
     gateIcon: { fontSize: 56, marginBottom: 16 },
     gateTitle: { fontSize: 22, fontWeight: "800", color: COLORS.text, marginBottom: 8 },
@@ -373,56 +436,153 @@ const styles = StyleSheet.create({
     gateBtn: { backgroundColor: COLORS.primary, paddingHorizontal: 28, paddingVertical: 14, borderRadius: 16 },
     gateBtnText: { color: COLORS.white, fontWeight: "700", fontSize: 15 },
 
-    // Header
-    header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingTop: 56, paddingBottom: 16, backgroundColor: COLORS.white, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-    backBtn: { padding: 8 },
-    backBtnText: { color: COLORS.primary, fontWeight: "600" },
+    // ── Header ──
+    header: {
+        flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+        paddingHorizontal: 20, paddingTop: Platform.OS === "ios" ? 54 : 44, paddingBottom: 14,
+        backgroundColor: COLORS.white, borderBottomWidth: 1, borderBottomColor: COLORS.border,
+    },
+    backBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.backgroundAlt, alignItems: "center", justifyContent: "center" },
+    backIcon: { fontSize: 22, color: COLORS.text, fontWeight: "600", marginTop: -1 },
     headerTitle: { fontSize: 17, fontWeight: "700", color: COLORS.text },
-    addText: { color: COLORS.primary, fontWeight: "700", fontSize: 16 },
-    addTextDisabled: { color: COLORS.textMuted },
+    bellBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.backgroundAlt, alignItems: "center", justifyContent: "center" },
+    bellIcon: { fontSize: 17 },
 
-    // Empty / Loading
-    center: { flex: 1, justifyContent: "center", alignItems: "center", gap: 16 },
-    emptyText: { fontSize: 16, color: COLORS.textMuted },
-    actionBtn: { backgroundColor: COLORS.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 14 },
-    actionBtnText: { color: COLORS.white, fontWeight: "700" },
+    scroll: { flexGrow: 1 },
 
-    // Profile card
-    profileCard: { backgroundColor: COLORS.white, borderRadius: 20, padding: 16, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 6, elevation: 2 },
-    profileTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 },
-    profileName: { fontSize: 16, fontWeight: "700", color: COLORS.text, marginBottom: 2 },
-    profileRel: { fontSize: 12, color: COLORS.textMuted, fontWeight: "500" },
-    actions: { flexDirection: "row", gap: 12 },
-    editIcon: { fontSize: 20 },
-    deleteIcon: { fontSize: 20 },
-    tagRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-    tag: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
-    tagBlue: { backgroundColor: "#EEF2FF" },
-    tagGreen: { backgroundColor: "#F0FDF4" },
-    tagRed: { backgroundColor: "#FFF1F2" },
-    tagPurple: { backgroundColor: "#FAF5FF" },
-    tagText: { fontSize: 11, fontWeight: "600", color: COLORS.text },
+    // ── Switcher Section ──
+    switcherSection: {
+        backgroundColor: COLORS.white,
+        paddingTop: 20, paddingBottom: 0,
+        borderBottomLeftRadius: 24, borderBottomRightRadius: 24,
+        shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 4,
+        zIndex: 10,
+    },
+    switcherHeader: {
+        flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+        paddingHorizontal: 20, marginBottom: 16,
+    },
+    switcherTitle: { fontSize: 16, fontWeight: "700", color: COLORS.text },
+    goldBadge: { backgroundColor: "#FEF3C7", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
+    goldBadgeText: { fontSize: 11, fontWeight: "700", color: "#92400E" },
 
-    // Modal
-    modalBg: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
-    modalContent: { backgroundColor: COLORS.white, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, maxHeight: "92%", flex: 1 },
-    modalTitle: { fontSize: 20, fontWeight: "800", color: COLORS.text, marginBottom: 20, textAlign: "center" },
+    // ── Profile Cards Row ──
+    cardsRow: { paddingHorizontal: 16, gap: 12, paddingBottom: 4 },
 
-    sectionTitle: { fontSize: 15, fontWeight: "700", color: COLORS.text, marginTop: 20, marginBottom: 12, borderLeftWidth: 3, borderLeftColor: COLORS.primary, paddingLeft: 10 },
+    profileCard: {
+        width: 110, alignItems: "center", padding: 14,
+        borderRadius: 20, borderWidth: 2, borderColor: COLORS.border,
+        backgroundColor: COLORS.backgroundAlt,
+    },
+    profileCardActive: {
+        borderColor: COLORS.primary,
+        backgroundColor: COLORS.primaryLight,
+        shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 6,
+    },
+    profileCardGlow: {
+        ...StyleSheet.absoluteFillObject, borderRadius: 18,
+        backgroundColor: COLORS.primary, opacity: 0.05,
+    },
 
-    label: { fontSize: 13, fontWeight: "600", color: COLORS.textMuted, marginBottom: 8 },
-    input: { backgroundColor: "#F1F5F9", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: COLORS.text, marginBottom: 4 },
+    avatarCircle: {
+        width: 52, height: 52, borderRadius: 26,
+        backgroundColor: COLORS.border, alignItems: "center", justifyContent: "center",
+        marginBottom: 8, position: "relative",
+    },
+    avatarCircleActive: { backgroundColor: COLORS.primary },
+    avatarEmoji: { fontSize: 26 },
+    activeCheckDot: {
+        position: "absolute", bottom: -2, right: -2,
+        width: 18, height: 18, borderRadius: 9,
+        backgroundColor: COLORS.success,
+        alignItems: "center", justifyContent: "center",
+        borderWidth: 2, borderColor: COLORS.white,
+    },
+    activeCheckText: { fontSize: 9, color: COLORS.white, fontWeight: "800" },
 
-    chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-    chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: COLORS.border, backgroundColor: "#F8FAFC" },
-    chipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-    chipDanger: { backgroundColor: COLORS.danger, borderColor: COLORS.danger },
-    chipText: { color: COLORS.textMuted, fontSize: 13, fontWeight: "500" },
-    chipActiveText: { color: COLORS.white, fontWeight: "700" },
+    profileCardName: { fontSize: 13, fontWeight: "700", color: COLORS.textSecondary, textAlign: "center", marginBottom: 2 },
+    profileCardNameActive: { color: COLORS.primary },
+    profileCardSub: { fontSize: 10, color: COLORS.textMuted, textAlign: "center", marginBottom: 6 },
+    profileCardSubActive: { color: COLORS.primaryDark },
+    focusBadge: {
+        backgroundColor: COLORS.border, paddingHorizontal: 6, paddingVertical: 2,
+        borderRadius: 8, marginTop: 2,
+    },
+    focusBadgeActive: { backgroundColor: COLORS.primary },
+    focusBadgeText: { fontSize: 9, fontWeight: "700", color: COLORS.textMuted },
+    focusBadgeTextActive: { color: COLORS.white },
 
-    modalActions: { flexDirection: "row", gap: 12, marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: COLORS.border },
-    modalCancel: { flex: 1, paddingVertical: 14, alignItems: "center", borderRadius: 14, backgroundColor: "#F1F5F9" },
-    modalCancelText: { color: COLORS.text, fontWeight: "600", fontSize: 15 },
-    modalSave: { flex: 1, paddingVertical: 14, alignItems: "center", borderRadius: 14, backgroundColor: COLORS.primary },
-    modalSaveText: { color: COLORS.white, fontWeight: "700", fontSize: 15 },
+    // ── Empty Slot ──
+    emptySlot: {
+        width: 110, height: 118, alignItems: "center", justifyContent: "center",
+        borderRadius: 20, borderWidth: 2, borderColor: COLORS.border, borderStyle: "dashed",
+        backgroundColor: COLORS.backgroundAlt,
+    },
+    emptySlotPlus: { fontSize: 28, color: COLORS.textMuted, fontWeight: "300", marginBottom: 4 },
+    emptySlotLabel: { fontSize: 12, color: COLORS.textMuted, fontWeight: "500" },
+
+    // ── Add Banner ──
+    addBanner: {
+        flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+        marginHorizontal: 16, marginTop: 16, marginBottom: 16,
+        backgroundColor: COLORS.primary, borderRadius: 16, padding: 14,
+    },
+    addBannerFull: { backgroundColor: COLORS.textSecondary },
+    addBannerLeft: { flexDirection: "row", alignItems: "center", gap: 12 },
+    addBannerIcon: {
+        width: 40, height: 40, borderRadius: 12,
+        backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center",
+    },
+    addBannerIconText: { fontSize: 20 },
+    addBannerTitle: { fontSize: 14, fontWeight: "700", color: COLORS.white },
+    addBannerSub: { fontSize: 11, color: "rgba(255,255,255,0.75)", marginTop: 1 },
+    addBannerArrow: { fontSize: 22, color: COLORS.white, fontWeight: "300" },
+
+    // ── Detail Section ──
+    detailSection: { paddingTop: 20, paddingHorizontal: 16 },
+    detailHeader: {
+        flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+        marginBottom: 16,
+    },
+    detailHeaderLabel: { fontSize: 15, fontWeight: "600", color: COLORS.textSecondary },
+    detailHeaderName: { fontWeight: "800", color: COLORS.primary, fontStyle: "italic" },
+    detailActions: { flexDirection: "row", gap: 8 },
+    editBtn: {
+        backgroundColor: COLORS.primaryLight, paddingHorizontal: 12, paddingVertical: 6,
+        borderRadius: 10,
+    },
+    editBtnText: { fontSize: 12, fontWeight: "700", color: COLORS.primary },
+    deleteBtn: {
+        backgroundColor: COLORS.dangerLight, paddingHorizontal: 10, paddingVertical: 6,
+        borderRadius: 10,
+    },
+    deleteBtnText: { fontSize: 14 },
+
+    // ── Detail Row ──
+    detailRow: {
+        backgroundColor: COLORS.white, borderRadius: 16, padding: 16,
+        marginBottom: 10,
+        shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1,
+    },
+    detailRowTitle: { fontSize: 13, fontWeight: "700", color: COLORS.text, marginBottom: 10 },
+    detailRowContent: {},
+    detailEmpty: { fontSize: 13, color: COLORS.textMuted, fontStyle: "italic" },
+
+    // ── Chips ──
+    chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+    chip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12 },
+    chipText: { fontSize: 12, fontWeight: "600" },
+
+    // ── Empty State ──
+    emptyState: {
+        flex: 1, alignItems: "center", justifyContent: "center",
+        paddingTop: 60, paddingHorizontal: 40,
+    },
+    emptyStateIcon: { fontSize: 56, marginBottom: 16 },
+    emptyStateTitle: { fontSize: 18, fontWeight: "800", color: COLORS.text, marginBottom: 8, textAlign: "center" },
+    emptyStateSub: { fontSize: 14, color: COLORS.textMuted, textAlign: "center", lineHeight: 22, marginBottom: 24 },
+    emptyStateBtn: { backgroundColor: COLORS.primary, paddingHorizontal: 28, paddingVertical: 14, borderRadius: 16 },
+    emptyStateBtnText: { color: COLORS.white, fontWeight: "700", fontSize: 15 },
+
+    bottomPad: { height: 40 },
 });

@@ -27,6 +27,12 @@ import { AlternativesSection } from "@/components/AlternativesSection";
 import { ScoreRing } from "@/components/ScoreRing";
 import { AdBanner } from "@/components/AdBanner";
 import { useRewardedAd } from "@/hooks/useRewardedAd";
+import { isMockBarcode } from "@/api/mockData";
+import {
+    getLocalFavoriteStatus,
+    upsertLocalFavorite,
+    removeLocalFavorite,
+} from "@/utils/localFavorites";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Result">;
 
@@ -44,41 +50,71 @@ export default function ResultScreen({ route, navigation }: Props) {
     // Khi nhận thưởng thành công (SDK callback) → refetch product với Premium view
     React.useEffect(() => {
         if (didEarnReward) {
-            Alert.alert('🎉 Nhận được 1 Xu!', 'Đang mở khóa kết quả phân tích sâu...');
+            Alert.alert("🎉 Nhận được 1 Xu!", "Đang mở khóa kết quả phân tích sâu...");
             refetch();
         }
     }, [didEarnReward, refetch]);
 
-    // ── Favorite state ────────────────────────────────────────────
+    const isLocal = isMockBarcode(barcode);
+
+    // ── Favorite state: local for DEMO_, API for real barcodes ──────
     const { data: favStatus } = useQuery({
         queryKey: ["favoriteStatus", barcode],
-        queryFn: () => getFavoriteStatus(barcode),
-        enabled: isAuthenticated,
+        queryFn: () => isLocal
+            ? getLocalFavoriteStatus(barcode)
+            : getFavoriteStatus(barcode),
+        enabled: isLocal || isAuthenticated,
         staleTime: 1000 * 30,
     });
 
     const upsertMutation = useMutation({
-        mutationFn: ({ label }: { label: "SAFE" | "AVOID" }) => upsertFavorite(barcode, label),
-        onSuccess: () => queryClient.invalidateQueries({ queryKey: ["favoriteStatus", barcode] }),
+        mutationFn: async ({ label }: { label: "SAFE" | "AVOID" }) => {
+            if (isLocal) {
+                // Lưu local với snapshot từ product data hiện tại
+                return upsertLocalFavorite(barcode, label, {
+                    name: product?.name,
+                    brand: product?.brand,
+                    imageUrl: product?.imageUrl,
+                    rating: (["GREEN", "YELLOW", "RED"].includes(product?.rating ?? "")
+                        ? product?.rating
+                        : null) as "GREEN" | "YELLOW" | "RED" | null,
+                    score: product?.score,
+                    category: product?.category,
+                });
+            }
+            return upsertFavorite(barcode, label);
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["favoriteStatus", barcode] });
+            queryClient.invalidateQueries({ queryKey: ["localFavorites"] });
+        },
         onError: (err: any) => {
-             if (err.errorCode === 'PREMIUM_REQUIRED') {
-                 Alert.alert("Tính năng VIP", "Vui lòng nâng cấp gói Premium để sử dụng tính năng yêu thích.", [
-                     { text: "Để sau", style: "cancel" },
-                     { text: "Nâng cấp ngay", onPress: () => navigation.navigate("Upgrade") }
-                 ]);
-             } else {
-                 Alert.alert("Lỗi", "Không thể lưu yêu thích");
-             }
-        }
+            if (err.errorCode === "PREMIUM_REQUIRED") {
+                Alert.alert("Tính năng VIP", "Vui lòng nâng cấp gói Premium để sử dụng tính năng yêu thích.", [
+                    { text: "Để sau", style: "cancel" },
+                    { text: "Nâng cấp ngay", onPress: () => navigation.navigate("Upgrade") },
+                ]);
+            } else {
+                Alert.alert("Lỗi", "Không thể lưu yêu thích");
+            }
+        },
     });
-    
+
     const removeMutation = useMutation({
-        mutationFn: () => removeFavorite(barcode),
-        onSuccess: () => queryClient.invalidateQueries({ queryKey: ["favoriteStatus", barcode] }),
+        mutationFn: () => isLocal
+            ? removeLocalFavorite(barcode)
+            : removeFavorite(barcode),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["favoriteStatus", barcode] });
+            queryClient.invalidateQueries({ queryKey: ["localFavorites"] });
+        },
     });
 
     const handleFavoritePress = () => {
-        if (!isAuthenticated) { Alert.alert("Cần đăng nhập", "Đăng nhập để lưu yêu thích"); return; }
+        // Mock: không cần đăng nhập
+        if (!isLocal && !isAuthenticated) {
+            Alert.alert("Cần đăng nhập", "Đăng nhập để lưu yêu thích"); return;
+        }
         if (favStatus?.isFavorited) {
             Alert.alert("Yêu thích", "Chọn hành động", [
                 { text: "Hủy", style: "cancel" },
@@ -87,13 +123,14 @@ export default function ResultScreen({ route, navigation }: Props) {
                 { text: "Xóa khỏi yêu thích", style: "destructive", onPress: () => removeMutation.mutate() },
             ]);
         } else {
-            Alert.alert("Thêm yêu thích", "Đánh dấu sản phẩm này là:", [
+            Alert.alert("Đánh dấu yêu thích", "Đánh dấu sản phẩm này là:", [
                 { text: "Hủy", style: "cancel" },
                 { text: "✅ Mua lại", onPress: () => upsertMutation.mutate({ label: "SAFE" }) },
                 { text: "🚫 Tránh mua", onPress: () => upsertMutation.mutate({ label: "AVOID" }) },
             ]);
         }
     };
+
 
     // ── Share handler ─────────────────────────────────────────────
     const handleShare = async () => {
@@ -118,10 +155,10 @@ export default function ResultScreen({ route, navigation }: Props) {
     // ── Token Ads Handler — sử dụng SDK thật ─────────────────────
     const handleWatchAdForToken = () => {
         if (!adLoaded) {
-            Alert.alert('Quảng cáo chưa sẵn sàng', 'Vui lòng thử lại sau vài giây.');
+            Alert.alert("Quảng cáo chưa sẵn sàng", "Vui lòng thử lại sau vài giây.");
             return;
         }
-        showAd(); // SDK sẽ hiển thị video, và tự động cộng token qua hook
+        showAd();
     };
 
     // ── Loading/Error states ──────────────────────────────────────
@@ -144,24 +181,24 @@ export default function ResultScreen({ route, navigation }: Props) {
             navigation.replace("Contribute", { barcode });
             return null;
         }
-        
+
         if (isNotEnoughTokens) {
             return (
-                 <View style={styles.center}>
-                     <Text style={[styles.permissionEmoji, { marginBottom: 16 }]}>🪙</Text>
-                     <Text style={styles.errorText}>Hết xu DICO</Text>
-                     <Text style={[styles.muted, { textAlign: 'center', marginBottom: 20 }]}>
-                         Bạn cần 1 Xu DICO để phân tích sâu bằng AI. Xem một video ngắn để nhận 1 Xu ngay lập tức!
-                     </Text>
-                     <TouchableOpacity style={styles.retryBtn} onPress={handleWatchAdForToken} disabled={!adLoaded}>
-                         <Text style={styles.retryText}>
-                             {adLoading ? 'Đang tải quảng cáo...' : adLoaded ? '▶ Xem Quảng Cáo (+1 Xu)' : 'Quảng cáo chưa sẵn sàng'}
-                         </Text>
-                     </TouchableOpacity>
-                     <TouchableOpacity style={{ marginTop: 12 }} onPress={() => navigation.setParams({ useToken: false })}>
-                         <Text style={styles.seeAllLink}>Quét với thông tin cơ bản →</Text>
-                     </TouchableOpacity>
-                 </View>
+                <View style={styles.center}>
+                    <Text style={[styles.permissionEmoji, { marginBottom: 16 }]}>🪙</Text>
+                    <Text style={styles.errorText}>Hết xu DICO</Text>
+                    <Text style={[styles.muted, { textAlign: "center", marginBottom: 20 }]}>
+                        Bạn cần 1 Xu DICO để phân tích sâu bằng AI. Xem một video ngắn để nhận 1 Xu ngay lập tức!
+                    </Text>
+                    <TouchableOpacity style={styles.retryBtn} onPress={handleWatchAdForToken} disabled={!adLoaded}>
+                        <Text style={styles.retryText}>
+                            {adLoading ? "Đang tải quảng cáo..." : adLoaded ? "▶ Xem Quảng Cáo (+1 Xu)" : "Quảng cáo chưa sẵn sàng"}
+                        </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={{ marginTop: 12 }} onPress={() => navigation.setParams({ useToken: false })}>
+                        <Text style={styles.seeAllLink}>Quét với thông tin cơ bản →</Text>
+                    </TouchableOpacity>
+                </View>
             );
         }
 
@@ -185,27 +222,39 @@ export default function ResultScreen({ route, navigation }: Props) {
 
     return (
         <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-            {/* Top action row */}
+
+            {/* ── Top action row ── */}
             <View style={styles.topRow}>
                 <TouchableOpacity style={styles.closeBtn} onPress={() => navigation.goBack()}>
                     <Text style={styles.closeBtnText}>← Quay lại</Text>
                 </TouchableOpacity>
                 <View style={styles.headerActions}>
+                    {/* Favorite */}
                     <TouchableOpacity
-                        style={[styles.favBtn, favStatus?.isFavorited && styles.favBtnActive]}
+                        style={[styles.iconBtn, favStatus?.isFavorited && styles.iconBtnActive]}
                         onPress={handleFavoritePress}
                     >
-                        <Text style={styles.favBtnText}>
+                        <Text style={styles.iconBtnText}>
                             {favStatus?.isFavorited ? (favStatus.label === "SAFE" ? "✅" : "🚫") : "⭐"}
                         </Text>
                     </TouchableOpacity>
+
+                    {/* ── So sánh icon ── */}
+                    <TouchableOpacity
+                        style={styles.iconBtn}
+                        onPress={() => navigation.navigate("Compare", { barcode1: barcode })}
+                    >
+                        <Text style={styles.iconBtnText}>⚖️</Text>
+                    </TouchableOpacity>
+
+                    {/* Share */}
                     <TouchableOpacity style={styles.shareBtn} onPress={handleShare}>
                         <Text style={styles.shareBtnText}>📤 Chia sẻ</Text>
                     </TouchableOpacity>
                 </View>
             </View>
 
-            {/* Score Hero Section — theo Frame 14 */}
+            {/* ── Score Hero Section ── */}
             <View style={styles.scoreHero}>
                 {/* Product image trái */}
                 <View style={styles.scoreHeroLeft}>
@@ -237,7 +286,28 @@ export default function ResultScreen({ route, navigation }: Props) {
                 </View>
             </View>
 
-            {/* Confidence warning */}
+            {/* ── Compare Action Banner — ngay dưới Score Hero ── */}
+            <TouchableOpacity
+                style={styles.compareBanner}
+                onPress={() => navigation.navigate("Compare", { barcode1: barcode })}
+                activeOpacity={0.82}
+            >
+                <View style={styles.compareBannerLeft}>
+                    <View style={styles.compareBannerIconBox}>
+                        <Text style={styles.compareBannerIcon}>⚖️</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                        <Text style={styles.compareBannerTitle}>So sánh với sản phẩm khác</Text>
+                        <Text style={styles.compareBannerSub}>
+                            {product.category === "BEAUTY" ? "🧴 Mỹ phẩm cùng loại" : "🥗 Thực phẩm cùng loại"}
+                            {" "}— xem điểm mạnh / điểm yếu
+                        </Text>
+                    </View>
+                </View>
+                <Text style={styles.compareBannerArrow}>›</Text>
+            </TouchableOpacity>
+
+            {/* ── Confidence warning ── */}
             {product.confidenceScore < 0.7 && (
                 <View style={styles.confidenceWarn}>
                     <Text style={styles.confidenceWarnText}>
@@ -246,14 +316,14 @@ export default function ResultScreen({ route, navigation }: Props) {
                 </View>
             )}
 
-            {/* Category Warning */}
+            {/* ── Category Warning ── */}
             {product.categoryWarning && (
                 <View style={styles.categoryWarningCard}>
                     <Text style={styles.categoryWarningText}>{product.categoryWarning}</Text>
                 </View>
             )}
 
-            {/* Override Warning */}
+            {/* ── Override Warning ── */}
             {product.overrideReasons && product.overrideReasons.length > 0 && (
                 <View style={styles.overrideCard}>
                     <Text style={styles.overrideTitle}>⚠️ Cảnh báo ưu tiên</Text>
@@ -263,7 +333,7 @@ export default function ResultScreen({ route, navigation }: Props) {
                 </View>
             )}
 
-            {/* AI Summary */}
+            {/* ── AI Summary ── */}
             <View style={styles.aiCard}>
                 <Text style={styles.aiTitle}>✨ Tóm tắt AI</Text>
                 <Text style={styles.aiSummary}>
@@ -271,7 +341,7 @@ export default function ResultScreen({ route, navigation }: Props) {
                 </Text>
             </View>
 
-            {/* Ingredients — Expandable */}
+            {/* ── Ingredients — Expandable ── */}
             {product.ingredientsText && (
                 <TouchableOpacity
                     style={styles.ingredientsCard}
@@ -293,20 +363,20 @@ export default function ResultScreen({ route, navigation }: Props) {
                 </TouchableOpacity>
             )}
 
-            {/* Confidence */}
+            {/* ── Confidence ── */}
             {product.confidenceScore >= 0.7 && (
                 <Text style={styles.confidence}>
                     Độ tin cậy: {Math.round(product.confidenceScore * 100)}%
                 </Text>
             )}
 
-            {/* Alternatives — only for YELLOW/RED products */}
+            {/* ── Alternatives — only for YELLOW/RED products ── */}
             <AlternativesSection
                 barcode={barcode}
                 currentRating={product.rating}
             />
 
-            {/* Banner Ad — only for FREE users, at the bottom */}
+            {/* ── Banner Ad — only for FREE users ── */}
             <AdBanner />
         </ScrollView>
     );
@@ -317,7 +387,7 @@ const styles = StyleSheet.create({
     content: { paddingBottom: 60 },
     center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: COLORS.background, gap: 16, padding: 24 },
 
-    // Header row — back arrow + share button
+    // Header row
     topRow: {
         flexDirection: "row",
         justifyContent: "space-between",
@@ -328,25 +398,29 @@ const styles = StyleSheet.create({
     },
     closeBtn: { flexDirection: "row", alignItems: "center", gap: 4, padding: 8, borderRadius: 20, backgroundColor: COLORS.surface },
     closeBtnText: { color: COLORS.text, fontSize: 15 },
-    shareBtn: { backgroundColor: COLORS.surface, width: 38, height: 38, borderRadius: 19, justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: COLORS.border },
-    shareBtnText: { color: COLORS.text, fontSize: 16 },
-    headerTitle: { color: COLORS.text, fontSize: 16, fontWeight: "700", flex: 1, textAlign: "center", paddingHorizontal: 8 },
+
+    // Header icon buttons (fav, compare)
+    iconBtn: {
+        backgroundColor: COLORS.surface, width: 38, height: 38, borderRadius: 19,
+        justifyContent: "center", alignItems: "center",
+        borderWidth: 1, borderColor: COLORS.border,
+    },
+    iconBtnActive: { backgroundColor: COLORS.primaryLight, borderColor: COLORS.primary },
+    iconBtnText: { fontSize: 18 },
+
+    shareBtn: { backgroundColor: COLORS.surface, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: COLORS.border },
+    shareBtnText: { color: COLORS.text, fontSize: 14, fontWeight: "600" },
     headerActions: { flexDirection: "row", gap: 8, alignItems: "center" },
-    favBtn: { backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 8 },
-    favBtnActive: { backgroundColor: COLORS.primaryLight, borderColor: COLORS.primary },
-    favBtnText: { fontSize: 18 },
     seeAllLink: { color: COLORS.primary, fontSize: 13, fontWeight: "500" },
     permissionEmoji: { fontSize: 40 },
 
-    // Score Hero — Frame 5: product image trái, ScoreRing phải — Light Mode
+    // Score Hero
     scoreHero: {
         flexDirection: "row",
         alignItems: "center",
         backgroundColor: COLORS.white,
-        borderRadius: 0,
         paddingHorizontal: 20,
         paddingVertical: 16,
-        marginBottom: 0,
         borderBottomWidth: 1,
         borderBottomColor: COLORS.border,
     },
@@ -357,23 +431,31 @@ const styles = StyleSheet.create({
     productName: { color: COLORS.text, fontSize: 18, fontWeight: "800", lineHeight: 24 },
     brand: { color: COLORS.textMuted, fontSize: 13 },
     barcode: { color: COLORS.textMuted, fontSize: 11, letterSpacing: 0.5 },
-    ratingBadge: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 4,
-        paddingHorizontal: 12,
-        paddingVertical: 5,
-        borderRadius: 20,
-    },
+    ratingBadge: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20 },
     ratingBadgeText: { fontSize: 13, fontWeight: "700" },
 
-    // Confidence warning
-    confidenceWarn: { backgroundColor: COLORS.warningLight, borderRadius: 10, padding: 10, marginHorizontal: 16, marginBottom: 12, borderWidth: 1, borderColor: COLORS.warning },
-    confidenceWarnText: { color: COLORS.warningText, fontSize: 13 },
+    // ── Compare Action Banner ──────────────────────────────────────
+    compareBanner: {
+        flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+        marginHorizontal: 16, marginTop: 12, marginBottom: 4,
+        backgroundColor: COLORS.primaryLight,
+        borderRadius: 14, padding: 12,
+        borderWidth: 1.5, borderColor: COLORS.primary + "40",
+    },
+    compareBannerLeft: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1 },
+    compareBannerIconBox: {
+        width: 38, height: 38, borderRadius: 10,
+        backgroundColor: COLORS.primary + "20",
+        alignItems: "center", justifyContent: "center",
+    },
+    compareBannerIcon: { fontSize: 20 },
+    compareBannerTitle: { fontSize: 13, fontWeight: "700", color: COLORS.primary, marginBottom: 1 },
+    compareBannerSub: { fontSize: 11, color: COLORS.primaryDark, opacity: 0.8 },
+    compareBannerArrow: { fontSize: 22, color: COLORS.primary, fontWeight: "300" },
 
-    // Category chip — small pill below product name
-    categoryChip: { backgroundColor: COLORS.primaryLight, paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20, alignSelf: "flex-start" },
-    categoryChipText: { color: COLORS.primary, fontSize: 11, fontWeight: "700", letterSpacing: 0.5 },
+    // Confidence warning
+    confidenceWarn: { backgroundColor: COLORS.warningLight, borderRadius: 10, padding: 10, marginHorizontal: 16, marginBottom: 12, marginTop: 8, borderWidth: 1, borderColor: COLORS.warning },
+    confidenceWarnText: { color: COLORS.warningText, fontSize: 13 },
 
     // Category warning
     categoryWarningCard: { backgroundColor: COLORS.warningLight, borderRadius: 10, padding: 12, marginHorizontal: 16, marginBottom: 12, borderLeftWidth: 3, borderLeftColor: COLORS.warning },
@@ -384,23 +466,13 @@ const styles = StyleSheet.create({
     overrideTitle: { color: COLORS.dangerText, fontSize: 15, fontWeight: "700", marginBottom: 8 },
     overrideReason: { color: COLORS.dangerText, fontSize: 14, marginBottom: 4 },
 
-    // Tags / chips horizontal row — Frame 5
-    tagsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, paddingHorizontal: 16, paddingVertical: 12 },
-    tagChip: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
-    tagChipText: { color: COLORS.text, fontSize: 12, fontWeight: "600" },
-
-    // Action buttons row — "Lưu yêu thích" + "So sánh" — Frame 5
-    actionRow: { flexDirection: "row", gap: 10, paddingHorizontal: 16, marginBottom: 20, marginTop: 4 },
-    actionBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 13, borderRadius: 12, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
-    actionBtnText: { color: COLORS.text, fontSize: 14, fontWeight: "600" },
-
-    // AI Summary card — Frame 5: subtle card
-    aiCard: { backgroundColor: COLORS.surface, borderRadius: 14, padding: 16, marginHorizontal: 16, marginBottom: 14, borderWidth: 1, borderColor: COLORS.border },
+    // AI Summary
+    aiCard: { backgroundColor: COLORS.surface, borderRadius: 14, padding: 16, marginHorizontal: 16, marginTop: 12, marginBottom: 14, borderWidth: 1, borderColor: COLORS.border },
     aiTitle: { color: COLORS.primary, fontSize: 13, fontWeight: "700", marginBottom: 8, letterSpacing: 0.3 },
     aiSummary: { color: COLORS.text, fontSize: 14, lineHeight: 22 },
 
-    // Ingredients section — Frame 5
-    ingredientsCard: { backgroundColor: COLORS.white, borderRadius: 0, paddingHorizontal: 16, paddingVertical: 14, marginBottom: 0, borderTopWidth: 1, borderTopColor: COLORS.border },
+    // Ingredients
+    ingredientsCard: { backgroundColor: COLORS.white, paddingHorizontal: 16, paddingVertical: 14, marginBottom: 0, borderTopWidth: 1, borderTopColor: COLORS.border },
     ingredientsHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
     ingredientsTitle: { color: COLORS.text, fontSize: 16, fontWeight: "700" },
     expandIcon: { color: COLORS.primary, fontSize: 13, fontWeight: "600" },
@@ -408,10 +480,25 @@ const styles = StyleSheet.create({
     ingredientsPreview: { color: COLORS.textMuted, fontSize: 13, lineHeight: 18 },
 
     // Meta
-    confidence: { color: COLORS.textMuted, fontSize: 12, textAlign: "center" },
+    confidence: { color: COLORS.textMuted, fontSize: 12, textAlign: "center", marginVertical: 8 },
     errorText: { color: COLORS.danger, fontSize: 16, textAlign: "center" },
     retryBtn: { backgroundColor: COLORS.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 },
     retryText: { color: COLORS.white, fontWeight: "600" },
     muted: { color: COLORS.textMuted, fontSize: 14 },
-});
 
+    // Legacy (unused but kept for safety)
+    headerTitle: { color: COLORS.text, fontSize: 16, fontWeight: "700" },
+    tagsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, paddingHorizontal: 16, paddingVertical: 12 },
+    tagChip: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
+    tagChipText: { color: COLORS.text, fontSize: 12, fontWeight: "600" },
+    categoryChip: { backgroundColor: COLORS.primaryLight, paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20, alignSelf: "flex-start" },
+    categoryChipText: { color: COLORS.primary, fontSize: 11, fontWeight: "700", letterSpacing: 0.5 },
+    actionRow: { flexDirection: "row", gap: 10, paddingHorizontal: 16, marginBottom: 20, marginTop: 4 },
+    actionBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 13, borderRadius: 12, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
+    actionBtnText: { color: COLORS.text, fontSize: 14, fontWeight: "600" },
+
+    // old favBtn aliases
+    favBtn: { backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 8 },
+    favBtnActive: { backgroundColor: COLORS.primaryLight, borderColor: COLORS.primary },
+    favBtnText: { fontSize: 18 },
+});

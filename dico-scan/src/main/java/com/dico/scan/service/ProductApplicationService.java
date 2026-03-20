@@ -77,7 +77,7 @@ public class ProductApplicationService {
             return new ProductEvaluationResponse(
                     "1111111111111", "Sữa công thức Meiji số 0 (Nhật Bản)", "Meiji", 
                     "https://down-vn.img.susercontent.com/file/vn-11134207-7r98o-lsth7w83d7c355", 
-                    "GREEN", 95, 0.98,
+                    "GREEN", 95, 0.98f,
                     "🌟 Phân tích AI: Sản phẩm sữa bột Meiji nội địa Nhật Bản hoàn toàn phù hợp cho trẻ sơ sinh và trẻ nhỏ. Chứa đầy đủ DHA, ARA và các vitamin thiết yếu giúp phát triển trí não. Không chứa đường sucrose hay hương liệu nhân tạo gây hại. Cực kỳ an toàn.\n\n👍 Điểm nổi bật:\n- Phù hợp với trẻ từ 0-1 tuổi.\n- Hỗ trợ tiêu hóa tốt, mát.\n\n⚠️ Lưu ý: Pha đúng nhiệt độ 70 độ C để diệt khuẩn nhưng không làm mất chất.", 
                     java.util.Collections.emptyList(), OffsetDateTime.now(), "FOOD", null, null,
                     "Sữa bột tách béo, dầu thực vật, DHA, ARA, Vitamin A, B1, B2, B6, B12, Canxi, Folic Acid...", 
@@ -88,7 +88,7 @@ public class ProductApplicationService {
             return new ProductEvaluationResponse(
                     "2222222222222", "Snack Khoai Tây Cay Độc Hại", "Oishi", 
                     "https://down-vn.img.susercontent.com/file/vn-11134201-7qukw-lesy9kcxrt4788", 
-                    "RED", 35, 0.99,
+                    "RED", 35, 0.99f,
                     "⚠️ Phân tích AI: Cảnh báo đỏ! Sản phẩm chứa hàm lượng muối (natri) và chất béo bão hòa rất cao. Đặc biệt có chứa chất điều vị E621 (Bột ngọt) và phẩm màu nhân tạo Tartrazine (E102) có thể gây dị ứng ở trẻ em hoặc người nhạy cảm.\n\n❌ Thành phần rủi ro:\n- E102 (Tartrazine): Chất tạo màu nhân tạo.\n- E621 (MSG): Có thể gây mệt mỏi.\n\n💡 Lời khuyên: Hạn chế sử dụng tối đa, TUYỆT ĐỐI không dùng cho trẻ dưới 3 tuổi.", 
                     java.util.List.of("Chứa phẩm màu nhân tạo E102", "Hàm lượng Natri quá cao (>1.5g/100g)"), OffsetDateTime.now(), "FOOD", null, null,
                     "Khoai tây, dầu cọ, muối, chất điều vị (E621), phẩm màu nhân tạo (E102), bột ớt tổng hợp...", 
@@ -99,8 +99,8 @@ public class ProductApplicationService {
             return new ProductEvaluationResponse(
                     "3333333333333", "Nước tẩy trang Bioderma Sensibio", "Bioderma", 
                     "https://down-vn.img.susercontent.com/file/82fdf21f76f7c5035f128c9b290dfc2f", 
-                    "YELLOW", 75, 0.95,
-                    "🔎 Phân tích AI: Tẩy trang dạng ứng dụng công nghệ Micellar. Không cồn, không hương liệu, rất an toàn cho da nhạy cảm. Tuy nhiên, sản phẩm có chứa Propylene Glycol - môt chất giữ ẩm an toàn nhưng có một tỷ lệ rất nhỏ người dùng có thể bị châm chích nhẹ nếu hàng rào bảo vệ da đang suy yếu.\n\n✅ Ưu điểm:\n- Không cồn (Alcohol-free).\n- Nhẹ dịu, độ pH 5.5 cân bằng.\n\n⚠️ Nhược điểm:\n- Yếu, không làm sạch được mascara chống nước.", 
+                    "YELLOW", 75, 0.95f,
+                    "🔎 Phân tích AI: Tẩy trang dạng ứng dụng công nghệ Micellar. Không cồn, không hương liệu, rất an toàn cho da nhạy cảm. Tuy nhiên, sản phẩm có chứa Propylene Glycol - một chất giữ ẩm an toàn nhưng có một tỷ lệ rất nhỏ người dùng có thể bị châm chích nhẹ nếu hàng rào bảo vệ da đang suy yếu.\n\n✅ Ưu điểm:\n- Không cồn (Alcohol-free).\n- Nhẹ dịu, độ pH 5.5 cân bằng.\n\n⚠️ Nhược điểm:\n- Yếu, không làm sạch được mascara chống nước.", 
                     java.util.List.of("Chứa Propylene Glycol có nguy cơ kích ứng nhẹ với da siêu mẫn cảm"), OffsetDateTime.now(), "BEAUTY", "⚠️ Xem thành phần để tránh kích ứng da nhạy cảm", null,
                     "Water (Aqua), PEG-6 Caprylic/Capric Glycerides, Cucumis Sativus (Cucumber) Fruit Extract, Mannitol, Xylitol, Rhamnose, Fructooligosaccharides, Propylene Glycol, Disodium EDTA...", 
                     "https://shopee.vn/bioderma"
@@ -133,8 +133,18 @@ public class ProductApplicationService {
                 if (tier == SubscriptionTier.PREMIUM_GOLD && profileId != null) {
                     Optional<FamilyProfile> profileOpt = familyProfileRepository.findById(profileId);
                     if (profileOpt.isPresent() && profileOpt.get().getUserId().equals(userId)) {
-                        familyAllergies = profileOpt.get().getAllergies();
-                        log.info("User {} scanning for family profile: {}", userId, profileOpt.get().getName());
+                        FamilyProfile fp = profileOpt.get();
+                        // Extract food allergies from the new safetyProfile JSONB structure
+                        Object fpAllergies = fp.getSafetyProfile() != null 
+                            ? fp.getSafetyProfile().get("foodAllergies") : null;
+                        if (fpAllergies instanceof List<?> list) {
+                            familyAllergies = list.stream()
+                                .map(Object::toString)
+                                .collect(java.util.stream.Collectors.toList());
+                        } else {
+                            familyAllergies = Collections.emptyList();
+                        }
+                        log.info("User {} scanning for family profile: {} allergies={}", userId, fp.getName(), familyAllergies);
                     }
                 }
 
