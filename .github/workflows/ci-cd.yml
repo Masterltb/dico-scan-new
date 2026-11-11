@@ -8,7 +8,7 @@ name: DICO Scan — CI/CD Pipeline
 # ─────────────────────────────────────────────────────────────────────
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, develop, chore/qa-audit-hardening ]
     tags:
       - 'v*.*.*'          # Trigger APK build + GitHub Release on version tags
   pull_request:
