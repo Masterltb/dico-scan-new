@@ -108,7 +108,7 @@ jobs:
         working-directory: dico-scan-mobile
 
       - name: ESLint check
-        run: npx eslint src --ext .ts,.tsx --max-warnings 0 || true
+        run: npx eslint src --ext .ts,.tsx --max-warnings 0
         working-directory: dico-scan-mobile
 
   # ──────────────────────────────────────────────

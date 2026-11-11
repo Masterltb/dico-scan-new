@@ -17,6 +17,7 @@ Desktop.ini
 
 # Backend (Java / Spring Boot)
 dico-scan/target/
+dico-scan/*.class
 dico-scan/*.jar
 dico-scan/*.war
 dico-scan/app.log
