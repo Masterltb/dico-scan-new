@@ -52,8 +52,9 @@ function ProfileCard({
     const rel = RELATIONSHIP_MAP[profile.relationship] ?? { label: profile.relationship, emoji: "🧑" };
     const avatar = PROFILE_AVATARS[index % PROFILE_AVATARS.length];
     const targets = profile.safetyProfile?.targets ?? [];
-    const focusLabel = targets.length > 0
-        ? getLabel(TARGET_OPTIONS, targets[0]).replace(/^[^\s]+ /, "").toUpperCase()
+    const firstTarget = targets[0];
+    const focusLabel = firstTarget
+        ? getLabel(TARGET_OPTIONS, firstTarget).replace(/^[^\s]+ /, "").toUpperCase()
         : "CHUNG";
 
     return (
@@ -136,7 +137,7 @@ export default function FamilyProfilesScreen({ navigation }: Props) {
     // Auto-select first profile when profiles load
     useEffect(() => {
         if (profiles.length > 0 && !selectedId) {
-            setSelectedId(profiles[0].id);
+            setSelectedId(profiles[0]?.id ?? null);
         }
         // Clear selection if selected profile was deleted
         if (selectedId && !profiles.find(p => p.id === selectedId)) {

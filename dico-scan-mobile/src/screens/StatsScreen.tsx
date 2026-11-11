@@ -154,7 +154,7 @@ export default function StatsScreen() {
     }
 
     const safeP = data.greenPercent ?? Math.round((data.greenCount / data.totalScanned) * 100);
-    const warnP = data.yellowPercent ?? Math.round((data.yellowCount / data.totalScanned) * 100);
+    const warnP = Math.round((data.yellowCount / data.totalScanned) * 100);
     const badP = data.redPercent ?? Math.round((data.redCount / data.totalScanned) * 100);
 
     return (

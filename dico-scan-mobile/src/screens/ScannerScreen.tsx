@@ -93,11 +93,14 @@ export default function ScannerScreen() {
             });
 
             if (!result.canceled && result.assets && result.assets.length > 0) {
-                const uri = result.assets[0].uri;
+                const image = result.assets[0];
+                if (!image) return;
+                const uri = image.uri;
                 if (scanned) return;
                 const scannedResults = await scanFromURLAsync(uri, ["ean13", "ean8", "qr", "upc_a", "upc_e"]);
                 if (scannedResults && scannedResults.length > 0) {
-                    handleBarcodeScanned({ type: scannedResults[0].type, data: scannedResults[0].data });
+                    const firstResult = scannedResults[0];
+                    if (firstResult) handleBarcodeScanned({ type: firstResult.type, data: firstResult.data });
                 } else {
                     Alert.alert("Lỗi", "Không tìm thấy mã vạch trong hình ảnh này. Hãy đảm bảo ảnh chụp rõ nét.");
                 }
